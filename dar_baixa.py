@@ -10,10 +10,10 @@ def render():
 
     conn = get_connection()
 
-    # Opção para escolher o tipo de OS
+    
     tipo_os = st.selectbox("Selecione o tipo de OS", ["OS Interna", "OS Externa"])
     
-    # Campo de busca da OS
+    
     numero_os = st.text_input(f"Digite o Número da {tipo_os}")
     os_data = None
     

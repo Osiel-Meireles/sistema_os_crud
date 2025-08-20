@@ -3,23 +3,17 @@ from database import init_db
 import os_interna, os_externa, filtro, dar_baixa
 import import_export
 
-# Remover a inicialização aqui. Ela será feita pelo setup.py
-# try:
-#     init_db()
-# except Exception as e:
-#     pass
-
 st.set_page_config(layout="wide")
 st.image("Secretaria_da_Fazenda-removebg-preview.png",
          width=600)
 st.markdown("<h2 style='text-align: left;'>Sistema de Registro de Ordens de Serviço</h2>", unsafe_allow_html=True)
 
 
-# Inicializa o estado da sessão para a navegação
+
 if 'page' not in st.session_state:
     st.session_state.page = "Home"
 
-# Injetando CSS para alinhar o texto dos botões à esquerda
+
 st.markdown(
     """
     <style>
@@ -30,7 +24,7 @@ st.markdown(
     """, unsafe_allow_html=True
 )
 
-# Menu lateral com botões
+
 st.sidebar.markdown("<h3 style='text-align: left;'>Navegação</h3>", unsafe_allow_html=True)
 
 if st.sidebar.button("Tela Inicial", use_container_width=True):
@@ -51,7 +45,7 @@ if st.sidebar.button("Filtrar OS", use_container_width=True):
 if st.sidebar.button("Dar Baixa em OS", use_container_width=True):
     st.session_state.page = "Dar Baixa em OS"
 
-# Lógica para exibir a página
+
 if st.session_state.page == "Home":
     st.markdown("<h3 style='text-align: left;'>Bem-vindo(a)!</h3>", unsafe_allow_html=True)
     st.write("Selecione uma das opções abaixo para começar.")

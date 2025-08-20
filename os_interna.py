@@ -10,13 +10,11 @@ def render():
 
     conn = get_connection()
 
-    # Opções para os selectboxes
     secretarias = ["Selecione...", "SAÚDE", "EDUCAÇÃO", "INFRAESTRUTURA", "ADMINISTRAÇÃO", "CIDADANIA", "GOVERNO", "SEGURANÇA", "FAZENDA", "ESPORTES"]
     tecnicos = ["Selecione...", "ANTONY CAUÃ", "MAYKON RODOLFO", "DIEGO CARDOSO", "ROMÉRIO CIRQUEIRA", "DIEL BATISTA", "JOSAFÁ MEDEIROS", "VALMIR FRANCISCO"]
     categorias = ["Selecione...", "INSTALAÇÃO", "MANUTENÇÃO", "REDES", "CONFIGURAÇÃO", "OUTROS"]
     equipamentos = ["Selecione...", "COMPUTADOR", "NOTEBOOK", "NOBREAK", "TRANSFORMADOR", "PERIFÉRICO", "MONITOR", "TABLET", "CELULAR"]
     
-    # Formulário de inserção
     with st.form("nova_os_interna", clear_on_submit=True):
         numero = st.text_input("Número da OS")
         secretaria = st.selectbox("Secretaria", secretarias)

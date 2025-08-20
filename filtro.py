@@ -7,7 +7,6 @@ from import_export import exportar_filtrados_para_excel
 def render():
     st.markdown("<h3 style='text-align: left;'>Filtrar Ordens de Serviço</h3>", unsafe_allow_html=True)
 
-    # Opções para filtros
     secretarias = ["Todas", "SAÚDE", "EDUCAÇÃO", "INFRAESTRUTURA", "ADMINISTRAÇÃO", "CIDADANIA", "GOVERNO", "SEGURANÇA", "FAZENDA", "ESPORTES"]
     
     with st.form("filtro_form"):
@@ -21,7 +20,6 @@ def render():
     if submitted:
         conn = get_connection()
         
-        # Conecta ao banco de dados e executa as consultas
         try:
             with conn.connect() as con:
                 params = {
