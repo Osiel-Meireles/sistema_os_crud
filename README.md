@@ -1,4 +1,4 @@
-# Sistema de Registro de Ordens de Serviço (OS)
+## Sistema de Registro de Ordens de Serviço (OS)
 
 Este é um sistema web desenvolvido em Python com o framework [Streamlit](https://streamlit.io/) para a gestão de ordens de serviço. O projeto foi arquitetado para ser robusto e fácil de implantar, utilizando um banco de dados PostgreSQL e conteinerização com Docker.
 
