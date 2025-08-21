@@ -1,4 +1,3 @@
-from __future__ import annotations
 import io
 import pandas as pd
 from pandas import DataFrame
@@ -33,9 +32,12 @@ def _to_time_str(series: pd.Series) -> pd.Series:
     """
     Converte horas variadas para 'HH:MM:SS' (string). Mantém vazio se inválido.
     """
+    # Tenta converter para datetime, forçando erros para NaT (Not a Time)
     t = pd.to_datetime(series, errors="coerce").dt.time
-    # dt.time vira dtype object; formata para HH:MM:SS
-    return t.map(lambda x: x.strftime("%H:%M:%S") if pd.notna(x) else None)
+    # Cria uma máscara para verificar quais valores são válidos
+    valid_mask = pd.notna(t)
+    # Retorna a string formatada apenas para valores válidos, senão retorna None
+    return t.where(valid_mask).map(lambda x: x.strftime("%H:%M:%S") if pd.notna(x) else None)
 
 
 def _strip_all(df: DataFrame) -> DataFrame:
@@ -46,20 +48,37 @@ def _strip_all(df: DataFrame) -> DataFrame:
     df = df.dropna(how="all")
     
     for col in df.columns:
-        if pd.api.types.is_string_dtype(df[col]) or df[col].dtype == object:
+        if pd.api.types.is_string_dtype(df[col]):
             df[col] = df[col].astype("string").str.strip()
     return df
 
 
+def _read_any_file(file) -> DataFrame:
+    """
+    Lê XLSX, ODS e CSV. Detecta o delimitador do CSV.
+    """
+    name = getattr(file, "name", None)
+    if name and name.lower().endswith(".csv"):
+        # Tenta inferir o delimitador. Usa ';' como fallback.
+        try:
+            df = pd.read_csv(file, sep=None, engine='python')
+            return df
+        except:
+            file.seek(0)
+            df = pd.read_csv(file, sep=';', engine='python')
+            return df
+    return _read_any_excel(file)
+
+
 def importar_os_externa(file) -> int:
     """
-    Importa OS Externas a partir da planilha no formato enviado.
+    Importa OS Externas a partir da planilha no formato de OS Externa.
     - A planilha tem 2 primeiras linhas de 'cabeçalho', sendo a linha 1 os nomes reais.
     - Faz o mapeamento de colunas e insere em os_externa.
     - Evita duplicação simples baseada no número da OS (se existir no banco).
     Retorna a quantidade inserida.
     """
-    raw = _read_any_excel(file)
+    raw = _read_any_file(file)
 
     if len(raw) >= 2:
         raw.columns = raw.iloc[1]
@@ -83,12 +102,34 @@ def importar_os_externa(file) -> int:
         "TELEFONE": "telefone",
         "TÉCNICO": "tecnico",
         "TECNICO": "tecnico",
+        "SOLICITAÇÃO": "solicitacao_cliente",
+        "SOLICITAÇÃO DO CLIENTE": "solicitacao_cliente",
+        "SOLICITACAO DO CLIENTE": "solicitacao_cliente",
+        "CATEGORIA": "categoria",
+        "NÚMERO DO PATRIMÔNIO": "patrimonio",
+        "NUMERO DO PATRIMONIO": "patrimonio",
+        "Nº_PATRIMÔNIO": "patrimonio",
+        "Nº PATRIMÔNIO": "patrimonio",
+        "EQUIPAMENTO": "equipamento",
+        "SERVIÇO EXECUTADO": "servico_executado",
+        "SERVICO EXECUTADO": "servico_executado",
+        "SERVIÇO_EXECUTADO": "servico_executado",
+        "STATUS": "status",
+        "DATA FINALIZADA": "data_finalizada",
+        "DATAFINALIZADA": "data_finalizada",
+        "DATA DE RETIRADA": "data_retirada",
+        "DATADERETIRADA": "data_retirada",
+        "RETIRADA POR": "retirada_por",
+        "RETIRADAPOR": "retirada_por"
     }
     df.columns = [str(c).strip().upper() for c in df.columns]
     df = df.rename(columns=rename_map)
 
     keep_cols = ["secretaria", "setor", "descricao", "data", "hora",
-                 "numero", "solicitante", "telefone", "tecnico"]
+                 "numero", "solicitante", "telefone", "tecnico",
+                 "solicitacao_cliente", "categoria", "patrimonio", "equipamento",
+                 "servico_executado", "status", "data_finalizada",
+                 "data_retirada", "retirada_por"]
     
     for col in keep_cols:
         if col not in df.columns:
@@ -110,7 +151,7 @@ def importar_os_externa(file) -> int:
         mask_new = ~df["numero"].isin(existing_set) | df["numero"].isna()
         df = df.loc[mask_new]
 
-    df = df.dropna(how="all", subset=keep_cols)
+    df = df.dropna(how="all", subset=["numero"])
 
     inserted = 0
     if not df.empty:
@@ -123,62 +164,73 @@ def importar_os_externa(file) -> int:
 
 def importar_os_interna(file) -> int:
     """
-    Importa OS Internas a partir da planilha no formato enviado (.ods).
-    - A primeira linha (índice 0) contém os nomes das colunas.
+    Importa OS Internas a partir da planilha no formato de OS Externa.
+    - A planilha tem 2 primeiras linhas de 'cabeçalho', sendo a linha 1 os nomes reais.
     - Faz o mapeamento de colunas e insere em os_interna.
-    - Evita duplicação simples baseada no número (O.S).
+    - Evita duplicação simples baseada no número da OS (se existir no banco).
     Retorna a quantidade inserida.
     """
-    raw = _read_any_excel(file)
+    raw = _read_any_file(file)
 
-    if len(raw) >= 1:
+    if len(raw) >= 2:
+        raw.columns = raw.iloc[1]
+        df = raw.iloc[2:].reset_index(drop=True)
+    else:
         raw.columns = raw.iloc[0]
         df = raw.iloc[1:].reset_index(drop=True)
-    else:
-        df = raw.copy()
 
     df = _strip_all(df)
 
-    df.columns = [str(c).strip().upper() for c in df.columns]
-
     rename_map = {
-        "O.S": "numero",
-        "OS": "numero",
         "SECRETARIA": "secretaria",
-        "DATA DE ENTRADA": "data",
-        "DATA DEENTRADA": "data",
-        "DATADEENTRADA": "data",
-        "DATA ENTRADA": "data",
+        "SETOR": "setor",
+        "DESCRIÇÃO": "descricao",
+        "DESCRICAO": "descricao",
+        "DATA": "data",
+        "HORA": "hora",
+        "OS": "numero",
+        "Nº OS": "numero",
+        "SOLICITANTE": "solicitante",
+        "TELEFONE": "telefone",
+        "TÉCNICO": "tecnico",
+        "TECNICO": "tecnico",
+        "SOLICITAÇÃO": "solicitacao_cliente",
+        "SOLICITAÇÃO DO CLIENTE": "solicitacao_cliente",
+        "SOLICITACAO DO CLIENTE": "solicitacao_cliente",
+        "CATEGORIA": "categoria",
+        "NÚMERO DO PATRIMÔNIO": "patrimonio",
+        "NUMERO DO PATRIMONIO": "patrimonio",
+        "Nº_PATRIMÔNIO": "patrimonio",
+        "Nº PATRIMÔNIO": "patrimonio",
+        "EQUIPAMENTO": "equipamento",
+        "SERVIÇO EXECUTADO": "servico_executado",
+        "SERVICO EXECUTADO": "servico_executado",
+        "SERVIÇO_EXECUTADO": "servico_executado",
+        "STATUS": "status",
         "DATA FINALIZADA": "data_finalizada",
         "DATAFINALIZADA": "data_finalizada",
         "DATA DE RETIRADA": "data_retirada",
-        "DATA DERETIRADA": "data_retirada",
-        "DATADE RETIRADA": "data_retirada",
-        "NOME DO SOLICITANTE": "solicitante",
-        "NOME DOSOLICITANTE": "solicitante",
+        "DATADERETIRADA": "data_retirada",
         "RETIRADA POR": "retirada_por",
-        "RETIRADAPOR": "retirada_por",
-        "EQUIPAMENTO": "equipamento",
-        "DESCRIÇÃO": "descricao",
-        "DESCRICAO": "descricao",
-        "STATUS": "status",
+        "RETIRADAPOR": "retirada_por"
     }
+    df.columns = [str(c).strip().upper() for c in df.columns]
     df = df.rename(columns=rename_map)
 
-    keep_cols = [
-        "numero", "secretaria", 
-        "data", "data_finalizada", "data_retirada", "solicitante",
-        "retirada_por", "equipamento", "descricao", "status"
-    ]
+    keep_cols = ["secretaria", "setor", "descricao", "data", "hora",
+                 "numero", "solicitante", "telefone", "tecnico",
+                 "solicitacao_cliente", "categoria", "patrimonio", "equipamento",
+                 "servico_executado", "status", "data_finalizada",
+                 "data_retirada", "retirada_por"]
     
     for col in keep_cols:
         if col not in df.columns:
             df[col] = None
     df = df[keep_cols]
 
-    for col in ["data", "data_finalizada", "data_retirada"]:
-        df[col] = _to_date_str(df[col])
-
+    df["data"] = _to_date_str(df["data"])
+    df["hora"] = _to_time_str(df["hora"])
+    
     conn = get_connection()
     try:
         existing = pd.read_sql("SELECT numero FROM os_interna WHERE numero IS NOT NULL", conn)
@@ -186,11 +238,12 @@ def importar_os_interna(file) -> int:
     except Exception:
         existing_set = set()
 
-    df["numero"] = df["numero"].astype("string")
-    mask_new = ~df["numero"].isin(existing_set) | df["numero"].isna()
-    df = df.loc[mask_new]
+    if "numero" in df.columns:
+        df["numero"] = df["numero"].astype("string")
+        mask_new = ~df["numero"].isin(existing_set) | df["numero"].isna()
+        df = df.loc[mask_new]
 
-    df = df.dropna(how="all", subset=keep_cols)
+    df = df.dropna(how="all", subset=["numero"])
 
     inserted = 0
     if not df.empty:
