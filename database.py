@@ -18,7 +18,7 @@ def init_db():
             session.execute(text("""
             CREATE TABLE IF NOT EXISTS os_interna (
                 id SERIAL PRIMARY KEY,
-                numero VARCHAR(255),
+                numero VARCHAR(255) UNIQUE,
                 secretaria VARCHAR(255),
                 setor VARCHAR(255),
                 data DATE,
@@ -43,7 +43,7 @@ def init_db():
             session.execute(text("""
             CREATE TABLE IF NOT EXISTS os_externa (
                 id SERIAL PRIMARY KEY,
-                numero VARCHAR(255),
+                numero VARCHAR(255) UNIQUE,
                 secretaria VARCHAR(255),
                 setor VARCHAR(255),
                 data DATE,

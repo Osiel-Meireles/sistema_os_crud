@@ -31,8 +31,11 @@ def render():
         
         submitted = st.form_submit_button("Registrar ordem de serviço",type='primary')
         if submitted:
-            if secretaria == "Selecione..." or tecnico == "Selecione..." or categoria == "Selecione...":
-                st.error("Por favor, selecione uma secretaria, um técnico e uma categoria válidos.")
+            # Validação para todos os campos
+            if not numero or not setor or not solicitante or not telefone or not solicitacao_cliente or not patrimonio or not descricao or not data or not hora:
+                st.error("Por favor, preencha todos os campos de texto e data/hora.")
+            elif secretaria == "Selecione..." or tecnico == "Selecione..." or categoria == "Selecione..." or equipamento == "Selecione...":
+                st.error("Por favor, selecione uma secretaria, técnico, categoria e equipamento válidos.")
             else:
                 with conn.connect() as con:
                     existing_os = con.execute(text("SELECT numero FROM os_externa WHERE numero = :numero"), {"numero": numero}).fetchone()
