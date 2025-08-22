@@ -39,6 +39,8 @@ def render():
             categoria = st.selectbox("Categoria do Serviço", categorias_filtro)
             equipamento = st.selectbox("Equipamento", equipamentos_filtro)
             numero_os = st.text_input("Número da OS (opcional)")
+            # --- CAMPO ADICIONADO ---
+            patrimonio = st.text_input("Número do Patrimônio (opcional)")
 
         submitted = st.form_submit_button("Filtrar")
 
@@ -54,6 +56,11 @@ def render():
                     where_clauses.append("numero ILIKE :numero_os")
                     params["numero_os"] = f"%{numero_os}%"
                 
+                # --- LÓGICA ADICIONADA ---
+                if patrimonio:
+                    where_clauses.append("patrimonio ILIKE :patrimonio")
+                    params["patrimonio"] = f"%{patrimonio}%"
+
                 if data_inicio and data_fim:
                     where_clauses.append("data BETWEEN :data_inicio AND :data_fim")
                     params["data_inicio"] = str(data_inicio)
