@@ -39,7 +39,7 @@ def render():
             categoria = st.selectbox("Categoria do Serviço", categorias_filtro)
             equipamento = st.selectbox("Equipamento", equipamentos_filtro)
             numero_os = st.text_input("Número da OS (opcional)")
-            # --- CAMPO ADICIONADO ---
+            # --- CAMPO ADICIONADO ----
             patrimonio = st.text_input("Número do Patrimônio (opcional)")
 
         submitted = st.form_submit_button("Filtrar")
