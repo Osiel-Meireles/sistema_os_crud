@@ -6,7 +6,7 @@ import import_export
 st.set_page_config(layout="wide")
 st.image("Secretaria_da_Fazenda-removebg-preview.png",
          width=600)
-st.markdown("<h2 style='text-align: left;'>Sistema OS TI</h2>", unsafe_allow_html=True)
+st.markdown("<h2 style='text-align: left;'>Sistema de Registro de Ordem de Serviço</h2>", unsafe_allow_html=True)
 
 
 
