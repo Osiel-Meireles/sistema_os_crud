@@ -30,16 +30,16 @@ st.sidebar.markdown("<h3 style='text-align: left;'>Navegação</h3>", unsafe_all
 if st.sidebar.button("Tela Inicial", use_container_width=True):
     st.session_state.page = "Home"
 
-if st.sidebar.button("OS Interna", use_container_width=True):
+if st.sidebar.button("Ordem de Serviço Interna", use_container_width=True):
     st.session_state.page = "OS Interna"
 
-if st.sidebar.button("OS Externa", use_container_width=True):
+if st.sidebar.button("Ordem de Serviço Externa", use_container_width=True):
     st.session_state.page = "OS Externa"
 
-if st.sidebar.button("Filtrar OS", use_container_width=True):
+if st.sidebar.button("Filtrar Ordem de Serviço", use_container_width=True):
     st.session_state.page = "Filtrar OS"
 
-if st.sidebar.button("Dar Baixa em OS", use_container_width=True):
+if st.sidebar.button("Atualizar Ordem de Serviço", use_container_width=True):
     st.session_state.page = "Dar Baixa em OS"
 
 
@@ -58,7 +58,7 @@ if st.session_state.page == "Home":
     with col2:
         if st.button("Ordens de Serviço Externas", use_container_width=True):
             st.session_state.page = "OS Externa"
-        if st.button("Dar Baixa em OS", use_container_width=True):
+        if st.button("Atualizar Ordens de Serviço", use_container_width=True):
             st.session_state.page = "Dar Baixa em OS"
 
 elif st.session_state.page == "OS Interna":

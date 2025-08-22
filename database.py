@@ -1,9 +1,10 @@
 import os
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, Session
+from datetime import datetime
 
 DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_NAME = os.getenv("DB_NAME", "ordens_servico")
+DB_NAME = os.getenv("DB_NAME", "ordens_servico_dev")
 DB_USER = os.getenv("DB_USER", "postgres")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "1234")
 
@@ -11,7 +12,29 @@ def get_connection():
     engine_url = f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}/{DB_NAME}"
     return create_engine(engine_url)
 
+def gerar_proximo_numero_os(con, table_name):
+    """
+    Gera o próximo número de OS no formato 'sequencial-ano'.
+    Ex: 1-25, 2-25, etc. Reinicia a cada ano.
+    """
+    ano_atual = datetime.now().strftime('%y')
+    sufixo_ano = f"%-{ano_atual}"
+
+    query = text(f"""
+        SELECT COALESCE(MAX(CAST(SPLIT_PART(numero, '-', 1) AS INTEGER)), 0)
+        FROM {table_name}
+        WHERE numero LIKE :sufixo
+    """)
+
+    resultado = con.execute(query, {"sufixo": sufixo_ano}).scalar()
+    proximo_sequencial = resultado + 1
+    novo_numero_os = f"{proximo_sequencial}-{ano_atual}"
+    return novo_numero_os
+
 def init_db():
+    """
+    Cria as tabelas no banco de dados se elas não existirem.
+    """
     engine = get_connection()
     try:
         with Session(engine) as session:
@@ -39,7 +62,6 @@ def init_db():
             )
             """))
 
-            
             session.execute(text("""
             CREATE TABLE IF NOT EXISTS os_externa (
                 id SERIAL PRIMARY KEY,
@@ -65,4 +87,5 @@ def init_db():
             """))
             session.commit()
     except Exception as e:
+        print(f"ERRO AO INICIAR O BANCO DE DADOS: {e}")
         raise e

@@ -10,4 +10,4 @@ COPY . .
 
 EXPOSE 8501
 
-CMD ["sh", "-c", "python setup.py && streamlit run app.py --server.port 8501 --server.enableCORS false --server.enableXsrfProtection false"]
+CMD ["sh", "-c", "sleep 10 && python setup.py && streamlit run app.py --server.port 8501 --server.enableCORS false --server.enableXsrfProtection false"]

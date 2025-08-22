@@ -11,6 +11,8 @@ services:
       - DB_NAME=ordens_servico_dev
       - DB_USER=postgres
       - DB_PASSWORD=1234
+    volumes:
+      - .:/app
     depends_on:
       - db-dev
 
