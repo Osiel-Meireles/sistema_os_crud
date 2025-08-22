@@ -1,63 +1,75 @@
 import streamlit as st
 import pandas as pd
-from database import get_connection
 from sqlalchemy import text
-from datetime import date
+from datetime import date, datetime
+
+from database import get_connection, gerar_proximo_numero_os
+from config import SECRETARIAS, TECNICOS, CATEGORIAS_INTERNA, EQUIPAMENTOS
 
 def render():
     st.markdown("##### Ordens de Serviço Internas")
     st.text("Registre a ordem de serviço")
 
     conn = get_connection()
-
-    secretarias = ["Selecione...", "SAÚDE", "EDUCAÇÃO", "INFRAESTRUTURA", "ADMINISTRAÇÃO", "CIDADANIA", "GOVERNO", "SEGURANÇA", "FAZENDA", "ESPORTES"]
-    tecnicos = ["Selecione...", "ANTONY CAUÃ", "MAYKON RODOLFO", "DIEGO CARDOSO", "ROMÉRIO CIRQUEIRA", "DIEL BATISTA", "JOSAFÁ MEDEIROS", "VALMIR FRANCISCO"]
-    categorias = ["Selecione...", "INSTALAÇÃO", "MANUTENÇÃO", "REDES", "CONFIGURAÇÃO", "OUTROS"]
-    equipamentos = ["Selecione...", "COMPUTADOR", "NOTEBOOK", "NOBREAK", "TRANSFORMADOR", "PERIFÉRICO", "MONITOR", "TABLET", "CELULAR"]
     
+    secretarias_sorted = [SECRETARIAS[0]] + sorted(SECRETARIAS[1:])
+    tecnicos_sorted = [TECNICOS[0]] + sorted(TECNICOS[1:])
+    categorias_sorted = [CATEGORIAS_INTERNA[0]] + sorted(CATEGORIAS_INTERNA[1:])
+    equipamentos_sorted = [EQUIPAMENTOS[0]] + sorted(EQUIPAMENTOS[1:])
+
     with st.form("nova_os_interna", clear_on_submit=True):
-        numero = st.text_input("Número da OS")
-        secretaria = st.selectbox("Secretaria", secretarias)
+        secretaria = st.selectbox("Secretaria", secretarias_sorted)
         setor = st.text_input("Setor")
         solicitante = st.text_input("Solicitante")
         telefone = st.text_input("Telefone")
         solicitacao_cliente = st.text_area("Solicitação do Cliente")
-        categoria = st.selectbox("Categoria do Serviço", categorias)
+        categoria = st.selectbox("Categoria do Serviço", categorias_sorted)
         patrimonio = st.text_input("Número do Patrimônio")
-        equipamento = st.selectbox("Equipamento", equipamentos)
-        descricao = st.text_area("Descrição do Problema (OS)")
-        tecnico = st.selectbox("Técnico", tecnicos)
-        data = st.date_input("Data de Entrada")
-        hora = st.time_input("Hora de Entrada")
+        equipamento = st.selectbox("Equipamento", equipamentos_sorted)
+        tecnico = st.selectbox("Técnico", tecnicos_sorted)
+        data = st.date_input("Data de Entrada", value=date.today(), format="DD/MM/YYYY")
+        hora = st.time_input("Hora de Entrada", value=datetime.now().time())
         
         submitted = st.form_submit_button("Registrar ordem de serviço",type='primary')
         if submitted:
-            # Validação para todos os campos
-            if not numero or not setor or not solicitante or not telefone or not solicitacao_cliente or not patrimonio or not descricao or not data or not hora:
-                st.error("Por favor, preencha todos os campos de texto e data/hora.")
-            elif secretaria == "Selecione..." or tecnico == "Selecione..." or categoria == "Selecione..." or equipamento == "Selecione...":
+            if not all([setor, solicitante, telefone, solicitacao_cliente, patrimonio]):
+                st.error("Por favor, preencha todos os campos de texto.")
+            elif "Selecione..." in [secretaria, tecnico, categoria, equipamento]:
                 st.error("Por favor, selecione uma secretaria, técnico, categoria e equipamento válidos.")
             else:
-                with conn.connect() as con:
-                    existing_os = con.execute(text("SELECT numero FROM os_interna WHERE numero = :numero"), {"numero": numero}).fetchone()
-                    if existing_os:
-                        st.error(f"Erro: O número de OS '{numero}' já existe. Por favor, use um número diferente.")
-                    else:
-                        con.execute(
-                            text("""
-                                INSERT INTO os_interna (numero, secretaria, setor, data, hora, solicitante, telefone, solicitacao_cliente, categoria, patrimonio, equipamento, descricao, status, tecnico)
-                                VALUES (:numero, :secretaria, :setor, :data, :hora, :solicitante, :telefone, :solicitacao_cliente, :categoria, :patrimonio, :equipamento, :descricao, 'EM ABERTO', :tecnico)
-                            """),
-                            {
-                                "numero": numero, "secretaria": secretaria, "setor": setor, "data": data, "hora": hora,
-                                "solicitante": solicitante, "telefone": telefone, "solicitacao_cliente": solicitacao_cliente,
-                                "categoria": categoria, "patrimonio": patrimonio, "equipamento": equipamento,
-                                "descricao": descricao, "tecnico": tecnico,
-                            }
-                        )
-                        con.commit()
-                        st.success("OS Interna adicionada com sucesso!")
+                try:
+                    with conn.connect() as con:
+                        with con.begin(): 
+                            con.execute(text("LOCK TABLE os_interna IN ACCESS EXCLUSIVE MODE"))
+                            
+                            numero_os = gerar_proximo_numero_os(con, "os_interna")
+                            
+                            print(f"DEBUG: Novo número de OS Interna gerado: {numero_os}")
+                            
+                            con.execute(
+                                text("""
+                                    INSERT INTO os_interna (numero, secretaria, setor, data, hora, solicitante, telefone, solicitacao_cliente, categoria, patrimonio, equipamento, status, tecnico)
+                                    VALUES (:numero, :secretaria, :setor, :data, :hora, :solicitante, :telefone, :solicitacao_cliente, :categoria, :patrimonio, :equipamento, 'EM ABERTO', :tecnico)
+                                """),
+                                {
+                                    "numero": numero_os, "secretaria": secretaria, "setor": setor, "data": data, "hora": hora,
+                                    "solicitante": solicitante, "telefone": telefone, "solicitacao_cliente": solicitacao_cliente,
+                                    "categoria": categoria, "patrimonio": patrimonio, "equipamento": equipamento,
+                                    "tecnico": tecnico,
+                                }
+                            )
+                    st.success(f"OS Interna número {numero_os} adicionada com sucesso!")
 
+                except Exception as e:
+                    st.error(f"Ocorreu um erro ao registrar a OS: {e}")
+
+    st.markdown("---")
     st.markdown("##### Ordens de serviço internas cadastradas: ")
-    df = pd.read_sql("SELECT * FROM os_interna", conn)
+    df = pd.read_sql("SELECT * FROM os_interna ORDER BY id DESC", conn)
+
+    date_cols = ['data', 'data_finalizada', 'data_retirada']
+    for col in date_cols:
+        if col in df.columns:
+            df[col] = pd.to_datetime(df[col], errors='coerce').dt.strftime('%d/%m/%Y')
+    
     st.dataframe(df)

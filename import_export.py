@@ -32,11 +32,8 @@ def _to_time_str(series: pd.Series) -> pd.Series:
     """
     Converte horas variadas para 'HH:MM:SS' (string). Mantém vazio se inválido.
     """
-    # Tenta converter para datetime, forçando erros para NaT (Not a Time)
     t = pd.to_datetime(series, errors="coerce").dt.time
-    # Cria uma máscara para verificar quais valores são válidos
     valid_mask = pd.notna(t)
-    # Retorna a string formatada apenas para valores válidos, senão retorna None
     return t.where(valid_mask).map(lambda x: x.strftime("%H:%M:%S") if pd.notna(x) else None)
 
 
@@ -59,7 +56,6 @@ def _read_any_file(file) -> DataFrame:
     """
     name = getattr(file, "name", None)
     if name and name.lower().endswith(".csv"):
-        # Tenta inferir o delimitador. Usa ';' como fallback.
         try:
             df = pd.read_csv(file, sep=None, engine='python')
             return df
