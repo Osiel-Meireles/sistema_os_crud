@@ -58,7 +58,9 @@ def init_db():
                 data_finalizada DATE,
                 data_retirada DATE,
                 retirada_por VARCHAR(255),
-                tecnico VARCHAR(255)
+                tecnico VARCHAR(255),
+                assinatura_solicitante_entrada TEXT,
+                assinatura_solicitante_retirada TEXT
             )
             """))
 
@@ -82,7 +84,9 @@ def init_db():
                 data_finalizada DATE,
                 data_retirada DATE,
                 retirada_por VARCHAR(255),
-                tecnico VARCHAR(255)
+                tecnico VARCHAR(255),
+                assinatura_solicitante_entrada TEXT,
+                assinatura_solicitante_retirada TEXT
             )
             """))
             session.commit()

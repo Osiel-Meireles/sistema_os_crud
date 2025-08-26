@@ -18,6 +18,7 @@ def render():
     equipamentos_filtro = ["Todos"] + sorted(EQUIPAMENTOS[1:])
     categorias_filtro = ["Todas"] + categorias_combinadas
 
+    # Inicializa o estado da sessão se não existir
     if 'df_filtrado' not in st.session_state:
         st.session_state.df_filtrado = pd.DataFrame()
 
@@ -27,23 +28,32 @@ def render():
         col1, col2, col3 = st.columns(3)
         with col1:
             tipo_os = st.selectbox("Tipo de OS", ["Ambas", "OS Interna", "OS Externa"])
-            secretaria = st.selectbox("Secretaria", secretarias_filtro)
-            status = st.selectbox("Status", STATUS_OPTIONS)
-
-        with col2:
             data_inicio = st.date_input("Data de Início")
+            
+        with col2:
+            status = st.selectbox("Status", STATUS_OPTIONS)
             data_fim = st.date_input("Data de Fim")
-            tecnico = st.selectbox("Técnico", tecnicos_filtro)
 
         with col3:
-            categoria = st.selectbox("Categoria do Serviço", categorias_filtro)
-            equipamento = st.selectbox("Equipamento", equipamentos_filtro)
+            secretaria = st.selectbox("Secretaria", secretarias_filtro)
             numero_os = st.text_input("Número da OS (opcional)")
-            # --- CAMPO ADICIONADO ----
+
+        with st.expander("Mais Filtros..."):
+            exp_col1, exp_col2, exp_col3 = st.columns(3)
+            with exp_col1:
+                tecnico = st.selectbox("Técnico", tecnicos_filtro)
+            with exp_col2:
+                categoria = st.selectbox("Categoria do Serviço", categorias_filtro)
+            with exp_col3:
+                equipamento = st.selectbox("Equipamento", equipamentos_filtro)
             patrimonio = st.text_input("Número do Patrimônio (opcional)")
 
-        submitted = st.form_submit_button("Filtrar")
+        # --- BOTÕES DE AÇÃO ---
+        submitted = st.form_submit_button("Filtrar", type="primary")
 
+    # --- LÓGICA DE LIMPEZA E BUSCA ---
+    # Limpa os resultados se o formulário for submetido novamente.
+    # A nova busca irá sobrescrever o estado da sessão.
     if submitted:
         conn = get_connection()
         
@@ -56,7 +66,6 @@ def render():
                     where_clauses.append("numero ILIKE :numero_os")
                     params["numero_os"] = f"%{numero_os}%"
                 
-                # --- LÓGICA ADICIONADA ---
                 if patrimonio:
                     where_clauses.append("patrimonio ILIKE :patrimonio")
                     params["patrimonio"] = f"%{patrimonio}%"
@@ -113,6 +122,8 @@ def render():
             st.error(f"Ocorreu um erro ao executar a consulta: {e}")
             st.session_state.df_filtrado = pd.DataFrame()
 
+    # --- LÓGICA DE EXIBIÇÃO ---
+    # Exibe os resultados apenas se o dataframe no estado da sessão não estiver vazio.
     if not st.session_state.df_filtrado.empty:
         st.markdown("---")
         st.markdown("#### Resultados da Busca")
@@ -126,18 +137,20 @@ def render():
 
         st.dataframe(df_display)
 
-        # --- NOVO BLOCO DE CÓDIGO PARA EXPORTAÇÃO ---
-        # Converte o DataFrame para bytes no formato Excel
         excel_bytes = exportar_filtrados_para_excel(st.session_state.df_filtrado)
         
-        # Cria o botão de download
+        # Botão para limpar os resultados
+        if st.button("Limpar Resultados"):
+            st.session_state.df_filtrado = pd.DataFrame()
+            st.rerun()
+
         st.download_button(
             label="Exportar para Excel",
             data=excel_bytes,
             file_name="dados_filtrados.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
-        # --- FIM DO NOVO BLOCO DE CÓDIGO ---
 
+    # Exibe a mensagem de "não encontrado" apenas no momento em que a busca é submetida.
     elif submitted:
         st.info("Não foram encontrados dados com os filtros aplicados.")
