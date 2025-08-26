@@ -122,7 +122,9 @@ def render():
         
         df_display = st.session_state.df_filtrado.copy()
         
-        colunas_para_esconder = ['assinatura_solicitante_entrada', 'assinatura_solicitante_retirada']
+        # --- INÍCIO DA ALTERAÇÃO ---
+        # Não vamos mais esconder a coluna da assinatura
+        colunas_para_esconder = ['assinatura_solicitante_entrada'] # Apenas a de entrada
         colunas_visiveis = [col for col in df_display.columns if col not in colunas_para_esconder]
         
         date_cols = ['data', 'data_finalizada', 'data_retirada']
@@ -130,7 +132,16 @@ def render():
             if col in df_display.columns:
                 df_display[col] = pd.to_datetime(df_display[col], errors='coerce').dt.strftime('%d/%m/%Y')
 
-        st.dataframe(df_display[colunas_visiveis])
+        # Configura a coluna de assinatura para exibir imagens
+        st.dataframe(
+            df_display[colunas_visiveis],
+            column_config={
+                "assinatura_solicitante_retirada": st.column_config.ImageColumn(
+                    "Assinatura Retirada", help="Assinatura de quem retirou o equipamento"
+                )
+            }
+        )
+        # --- FIM DA ALTERAÇÃO ---
 
         excel_bytes = exportar_filtrados_para_excel(st.session_state.df_filtrado)
         
@@ -145,7 +156,7 @@ def render():
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
-        # Se a busca retornou exatamente um resultado, mostramos os detalhes da retirada
+        # Se a busca retornou exatamente um resultado, mostramos os detalhes
         if len(st.session_state.df_filtrado) == 1:
             st.markdown("---")
             st.markdown("#### Detalhes da Retirada")
@@ -153,30 +164,22 @@ def render():
             os_selecionada = st.session_state.df_filtrado.iloc[0]
             
             assinatura_retirada = os_selecionada.get('assinatura_solicitante_retirada')
-            # --- INÍCIO DA ALTERAÇÃO ---
             cpf_retirada = os_selecionada.get('cpf_retirada')
             retirada_por = os_selecionada.get('retirada_por')
-            # --- FIM DA ALTERAÇÃO ---
 
+            st.markdown("**Assinatura de Retirada:**")
             if pd.notna(assinatura_retirada):
                 try:
                     base64_data = assinatura_retirada.split(',')[1]
                     image_bytes = base64.b64decode(base64_data)
                     
-                    if pd.notna(retirada_por):
-                        st.write(f"**Entregue a:** {retirada_por}")
-
-                    if pd.notna(cpf_retirada):
-                        st.write(f"**CPF do recebedor:** {cpf_retirada}")
-                    # --- FIM DA ALTERAÇÃO ---
-                    
-                    st.markdown("**Assinatura do recebedor:**")
-                    
                     st.image(image_bytes, width=400) 
 
-                    # --- INÍCIO DA ALTERAÇÃO ---
-                    # Adiciona o nome de quem retirou antes do CPF
-                    
+                    if pd.notna(retirada_por):
+                        st.write(f"**Retirado por:** {retirada_por}")
+
+                    if pd.notna(cpf_retirada):
+                        st.write(f"**CPF de quem retirou:** {cpf_retirada}")
                         
                 except Exception as e:
                     st.warning(f"Não foi possível carregar a imagem da assinatura. Detalhe do erro: {e}")
