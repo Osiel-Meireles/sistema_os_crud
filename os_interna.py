@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 from sqlalchemy import text
 from datetime import date, datetime
+from streamlit_drawable_canvas import st_canvas
+import base64
 
 from database import get_connection, gerar_proximo_numero_os
 from config import SECRETARIAS, TECNICOS, CATEGORIAS_INTERNA, EQUIPAMENTOS
@@ -18,47 +20,71 @@ def render():
     equipamentos_sorted = [EQUIPAMENTOS[0]] + sorted(EQUIPAMENTOS[1:])
 
     with st.form("nova_os_interna", clear_on_submit=True):
-        secretaria = st.selectbox("Secretaria", secretarias_sorted)
-        setor = st.text_input("Setor")
-        solicitante = st.text_input("Solicitante")
-        telefone = st.text_input("Telefone")
-        solicitacao_cliente = st.text_area("Solicitação do Cliente")
-        categoria = st.selectbox("Categoria do Serviço", categorias_sorted)
-        patrimonio = st.text_input("Número do Patrimônio")
-        equipamento = st.selectbox("Equipamento", equipamentos_sorted)
-        tecnico = st.selectbox("Técnico", tecnicos_sorted)
-        data = st.date_input("Data de Entrada", value=date.today(), format="DD/MM/YYYY")
-        hora = st.time_input("Hora de Entrada", value=datetime.now().time())
+        col1, col2 = st.columns(2)
+
+        with col1:
+            secretaria = st.selectbox("Secretaria", secretarias_sorted)
+            solicitante = st.text_input("Solicitante")
+            solicitacao_cliente = st.text_area("Solicitação do Cliente")
+            patrimonio = st.text_input("Número do Patrimônio")
+            tecnico = st.selectbox("Técnico", tecnicos_sorted)
+            data = st.date_input("Data de Entrada", value=date.today(), format="DD/MM/YYYY")
+
+        with col2:
+            setor = st.text_input("Setor")
+            telefone = st.text_input("Telefone")
+            categoria = st.selectbox("Categoria do Serviço", categorias_sorted)
+            equipamento = st.selectbox("Equipamento", equipamentos_sorted)
+            hora = st.time_input("Hora de Entrada", value=datetime.now().time())
         
-        submitted = st.form_submit_button("Registrar ordem de serviço",type='primary')
+        st.markdown("---")
+        st.write("Assinatura do Solicitante:")
+        canvas_result = st_canvas(
+            fill_color="rgba(255, 165, 0, 0.3)",
+            stroke_width=3,
+            stroke_color="#000000",
+            background_color="#FFFFFF",
+            height=150,
+            width=600,
+            drawing_mode="freedraw",
+            key="canvas_interna"
+        )
+
+        submitted = st.form_submit_button("Registrar ordem de serviço", use_container_width=True, type='primary')
+        
         if submitted:
             if not all([setor, solicitante, telefone, solicitacao_cliente, patrimonio]):
                 st.error("Por favor, preencha todos os campos de texto.")
             elif "Selecione..." in [secretaria, tecnico, categoria, equipamento]:
                 st.error("Por favor, selecione uma secretaria, técnico, categoria e equipamento válidos.")
+            elif canvas_result.image_data is None:
+                st.error("A assinatura do solicitante é obrigatória para criar a OS.")
             else:
                 try:
+                    # Converte a assinatura para Base64
+                    img_bytes = canvas_result.image_data.tobytes()
+                    assinatura_base64 = base64.b64encode(img_bytes).decode("utf-8")
+                    assinatura_final = f"data:image/png;base64,{assinatura_base64}"
+
                     with conn.connect() as con:
                         with con.begin(): 
                             con.execute(text("LOCK TABLE os_interna IN ACCESS EXCLUSIVE MODE"))
                             
                             numero_os = gerar_proximo_numero_os(con, "os_interna")
                             
-                            print(f"DEBUG: Novo número de OS Interna gerado: {numero_os}")
-                            
                             con.execute(
                                 text("""
-                                    INSERT INTO os_interna (numero, secretaria, setor, data, hora, solicitante, telefone, solicitacao_cliente, categoria, patrimonio, equipamento, status, tecnico)
-                                    VALUES (:numero, :secretaria, :setor, :data, :hora, :solicitante, :telefone, :solicitacao_cliente, :categoria, :patrimonio, :equipamento, 'EM ABERTO', :tecnico)
+                                    INSERT INTO os_interna (numero, secretaria, setor, data, hora, solicitante, telefone, solicitacao_cliente, categoria, patrimonio, equipamento, status, tecnico, assinatura_solicitante_entrada)
+                                    VALUES (:numero, :secretaria, :setor, :data, :hora, :solicitante, :telefone, :solicitacao_cliente, :categoria, :patrimonio, :equipamento, 'EM ABERTO', :tecnico, :assinatura)
                                 """),
                                 {
                                     "numero": numero_os, "secretaria": secretaria, "setor": setor, "data": data, "hora": hora,
                                     "solicitante": solicitante, "telefone": telefone, "solicitacao_cliente": solicitacao_cliente,
                                     "categoria": categoria, "patrimonio": patrimonio, "equipamento": equipamento,
-                                    "tecnico": tecnico,
+                                    "tecnico": tecnico, "assinatura": assinatura_final
                                 }
                             )
-                    st.success(f"OS Interna número {numero_os} adicionada com sucesso!")
+                    st.toast(f"✅ OS Interna nº {numero_os} adicionada com sucesso!")
 
                 except Exception as e:
                     st.error(f"Ocorreu um erro ao registrar a OS: {e}")

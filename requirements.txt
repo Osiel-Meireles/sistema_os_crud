@@ -5,3 +5,4 @@ sqlalchemy
 xlsxwriter
 openpyxl
 odfpy
+streamlit-drawable-canvas
