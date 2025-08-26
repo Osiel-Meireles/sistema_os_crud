@@ -6,3 +6,5 @@ xlsxwriter
 openpyxl
 odfpy
 streamlit-drawable-canvas
+Pillow
+numpy

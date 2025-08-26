@@ -13,10 +13,7 @@ def get_connection():
     return create_engine(engine_url)
 
 def gerar_proximo_numero_os(con, table_name):
-    """
-    Gera o próximo número de OS no formato 'sequencial-ano'.
-    Ex: 1-25, 2-25, etc. Reinicia a cada ano.
-    """
+    # ... (código da função sem alterações)
     ano_atual = datetime.now().strftime('%y')
     sufixo_ano = f"%-{ano_atual}"
 
@@ -60,7 +57,8 @@ def init_db():
                 retirada_por VARCHAR(255),
                 tecnico VARCHAR(255),
                 assinatura_solicitante_entrada TEXT,
-                assinatura_solicitante_retirada TEXT
+                assinatura_solicitante_retirada TEXT,
+                cpf_retirada VARCHAR(14)
             )
             """))
 
@@ -86,7 +84,8 @@ def init_db():
                 retirada_por VARCHAR(255),
                 tecnico VARCHAR(255),
                 assinatura_solicitante_entrada TEXT,
-                assinatura_solicitante_retirada TEXT
+                assinatura_solicitante_retirada TEXT,
+                cpf_retirada VARCHAR(14)
             )
             """))
             session.commit()

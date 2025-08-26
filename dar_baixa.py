@@ -7,6 +7,11 @@ from config import STATUS_OPTIONS
 from streamlit_drawable_canvas import st_canvas
 import base64
 
+# Importações adicionadas para o processamento correto da imagem
+from PIL import Image
+import io
+import numpy as np
+
 def render():
     st.markdown("<h3 style='text-align: left;'>Atualizar Ordem de Serviço</h3>", unsafe_allow_html=True)
     st.write("Busque uma OS para atualizar seu status ou para dar baixa (finalizar).")
@@ -23,7 +28,6 @@ def render():
                 table_name = "os_interna" if tipo_os == "OS Interna" else "os_externa"
                 query = text(f"SELECT * FROM {table_name} WHERE numero = :numero")
                 os_df = pd.read_sql(query, con, params={"numero": numero_os})
-
                 if not os_df.empty:
                     st.session_state['os_data'] = os_df.iloc[0]
                 else:
@@ -53,7 +57,6 @@ def render():
 
         st.markdown("---")
         
-        # --- SEÇÃO DE ATUALIZAÇÃO DE STATUS (SEMPRE VISÍVEL) ---
         with st.form("atualizar_os_form"):
             st.markdown("#### Atualize o status da OS")
             status_update_options = [s for s in STATUS_OPTIONS if s not in ["Todos", "AGUARDANDO RETIRADA", "ENTREGUE AO CLIENTE"]]
@@ -86,13 +89,17 @@ def render():
                     except Exception as e:
                         st.error(f"Ocorreu um erro ao atualizar a OS: {e}")
 
-        # --- SEÇÃO DE REGISTRO DE RETIRADA E ASSINATURA (CONDICIONAL) ---
         if can_register_retirada:
             st.markdown("---")
             st.markdown("#### Confirmar Entrega e Coletar Assinatura")
-            retirada_por = st.text_input("Confirmado por (Nome do Solicitante)", value=os_data.get('retirada_por') or '', disabled=is_delivered, key="retirada_input")
             
-            st.write("Assinatura do Solicitante:")
+            col1, col2 = st.columns(2)
+            with col1:
+                retirada_por = st.text_input("Confirmado por (Nome de quem retira)", value=os_data.get('retirada_por') or '', disabled=is_delivered, key="retirada_input")
+            with col2:
+                cpf_retirada = st.text_input("CPF de quem retira (apenas números)", max_chars=11, disabled=is_delivered, key="cpf_input")
+
+            st.write("Assinatura de quem retira:")
             canvas_result = st_canvas(
                 fill_color="rgba(255, 165, 0, 0.3)",
                 stroke_width=3, stroke_color="#000000",
@@ -102,31 +109,47 @@ def render():
             )
 
             if st.button("Confirmar Entrega e Salvar Assinatura", disabled=is_delivered, type="primary"):
-                if not st.session_state.retirada_input:
-                    st.error("O campo 'Confirmado por' é obrigatório.")
+                if not st.session_state.retirada_input or not st.session_state.cpf_input:
+                    st.error("Os campos 'Confirmado por' e 'CPF' são obrigatórios.")
                 elif canvas_result.image_data is None:
-                    st.error("A assinatura do solicitante é obrigatória.")
+                    st.error("A assinatura é obrigatória.")
                 else:
                     try:
-                        img_bytes = canvas_result.image_data.tobytes()
-                        assinatura_base64 = base64.b64encode(img_bytes).decode("utf-8")
-                        
+                        # --- INÍCIO DA CORREÇÃO ---
+                        # Converte o desenho do canvas para uma imagem PNG antes de salvar
+                        image_array = canvas_result.image_data.astype(np.uint8)
+                        pil_image = Image.fromarray(image_array, 'RGBA')
+                        buffer = io.BytesIO()
+                        pil_image.save(buffer, format="PNG")
+                        img_bytes = buffer.getvalue()
+                        # --- FIM DA CORREÇÃO ---
+
                         with conn.connect() as con:
-                            table_name = "os_interna" if tipo_os == "OS Interna" else "os_externa"
-                            update_query = text(f"""
-                                UPDATE {table_name}
-                                SET status = :status, data_retirada = :data_retirada,
-                                    retirada_por = :retirada_por, assinatura_solicitante_retirada = :assinatura
-                                WHERE numero = :numero
-                            """)
-                            con.execute(update_query, {
-                                "numero": os_data['numero'], "status": "ENTREGUE AO CLIENTE",
-                                "data_retirada": date.today(), "retirada_por": st.session_state.retirada_input,
-                                "assinatura": f"data:image/png;base64,{assinatura_base64}"
-                            })
-                            con.commit()
-                            st.success(f"Retirada da OS {os_data['numero']} registrada com sucesso! Recarregando...")
-                            del st.session_state['os_data']
-                            st.rerun()
+                            with con.begin():
+                                assinatura_base64 = base64.b64encode(img_bytes).decode("utf-8")
+                                table_name_os = "os_interna" if tipo_os == "OS Interna" else "os_externa"
+                                
+                                update_query_os = text(f"""
+                                    UPDATE {table_name_os}
+                                    SET status = :status, 
+                                        data_retirada = :data_retirada,
+                                        retirada_por = :retirada_por, 
+                                        assinatura_solicitante_retirada = :assinatura,
+                                        cpf_retirada = :cpf
+                                    WHERE numero = :numero
+                                """)
+                                con.execute(update_query_os, {
+                                    "numero": os_data['numero'], 
+                                    "status": "ENTREGUE AO CLIENTE",
+                                    "data_retirada": date.today(), 
+                                    "retirada_por": st.session_state.retirada_input,
+                                    "assinatura": f"data:image/png;base64,{assinatura_base64}",
+                                    "cpf": st.session_state.cpf_input
+                                })
+
+                        st.success(f"Retirada da OS {os_data['numero']} registrada com sucesso! Recarregando...")
+                        del st.session_state['os_data']
+                        st.rerun()
+
                     except Exception as e:
                         st.error(f"Ocorreu um erro ao registrar a retirada: {e}")

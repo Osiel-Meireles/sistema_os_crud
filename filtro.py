@@ -7,18 +7,17 @@ from config import (
     CATEGORIAS_INTERNA, CATEGORIAS_EXTERNA
 )
 from import_export import exportar_filtrados_para_excel
+import base64
 
 def render():
     st.markdown("<h3 style='text-align: left;'>Filtrar Ordens de Serviço</h3>", unsafe_allow_html=True)
 
     categorias_combinadas = sorted(list(set(CATEGORIAS_INTERNA[1:] + CATEGORIAS_EXTERNA[1:])))
-
     secretarias_filtro = ["Todas"] + sorted(SECRETARIAS[1:])
     tecnicos_filtro = ["Todos"] + sorted(TECNICOS[1:])
     equipamentos_filtro = ["Todos"] + sorted(EQUIPAMENTOS[1:])
     categorias_filtro = ["Todas"] + categorias_combinadas
 
-    # Inicializa o estado da sessão se não existir
     if 'df_filtrado' not in st.session_state:
         st.session_state.df_filtrado = pd.DataFrame()
 
@@ -28,11 +27,13 @@ def render():
         col1, col2, col3 = st.columns(3)
         with col1:
             tipo_os = st.selectbox("Tipo de OS", ["Ambas", "OS Interna", "OS Externa"])
-            data_inicio = st.date_input("Data de Início")
+            # CORREÇÃO: Definir o valor padrão como None para tornar o filtro de data opcional
+            data_inicio = st.date_input("Data de Início", value=None)
             
         with col2:
             status = st.selectbox("Status", STATUS_OPTIONS)
-            data_fim = st.date_input("Data de Fim")
+            # CORREÇÃO: Definir o valor padrão como None para tornar o filtro de data opcional
+            data_fim = st.date_input("Data de Fim", value=None)
 
         with col3:
             secretaria = st.selectbox("Secretaria", secretarias_filtro)
@@ -48,15 +49,10 @@ def render():
                 equipamento = st.selectbox("Equipamento", equipamentos_filtro)
             patrimonio = st.text_input("Número do Patrimônio (opcional)")
 
-        # --- BOTÕES DE AÇÃO ---
         submitted = st.form_submit_button("Filtrar", type="primary")
 
-    # --- LÓGICA DE LIMPEZA E BUSCA ---
-    # Limpa os resultados se o formulário for submetido novamente.
-    # A nova busca irá sobrescrever o estado da sessão.
     if submitted:
         conn = get_connection()
-        
         try:
             with conn.connect() as con:
                 params = {}
@@ -70,6 +66,7 @@ def render():
                     where_clauses.append("patrimonio ILIKE :patrimonio")
                     params["patrimonio"] = f"%{patrimonio}%"
 
+                # A lógica agora só adiciona o filtro se ambas as datas forem preenchidas
                 if data_inicio and data_fim:
                     where_clauses.append("data BETWEEN :data_inicio AND :data_fim")
                     params["data_inicio"] = str(data_inicio)
@@ -100,7 +97,7 @@ def render():
                     where_string = " WHERE " + " AND ".join(where_clauses)
                 
                 base_query = """
-                    SELECT numero, secretaria, setor, data, hora, solicitante, telefone, equipamento, descricao, status, data_finalizada, data_retirada, retirada_por, tecnico, solicitacao_cliente, categoria, patrimonio, servico_executado, '{}' as tipo
+                    SELECT *, '{}' as tipo
                     FROM {}
                 """
 
@@ -122,24 +119,24 @@ def render():
             st.error(f"Ocorreu um erro ao executar a consulta: {e}")
             st.session_state.df_filtrado = pd.DataFrame()
 
-    # --- LÓGICA DE EXIBIÇÃO ---
-    # Exibe os resultados apenas se o dataframe no estado da sessão não estiver vazio.
     if not st.session_state.df_filtrado.empty:
         st.markdown("---")
         st.markdown("#### Resultados da Busca")
         
         df_display = st.session_state.df_filtrado.copy()
         
+        colunas_para_esconder = ['assinatura_solicitante_entrada', 'assinatura_solicitante_retirada']
+        colunas_visiveis = [col for col in df_display.columns if col not in colunas_para_esconder]
+        
         date_cols = ['data', 'data_finalizada', 'data_retirada']
         for col in date_cols:
             if col in df_display.columns:
                 df_display[col] = pd.to_datetime(df_display[col], errors='coerce').dt.strftime('%d/%m/%Y')
 
-        st.dataframe(df_display)
+        st.dataframe(df_display[colunas_visiveis])
 
         excel_bytes = exportar_filtrados_para_excel(st.session_state.df_filtrado)
         
-        # Botão para limpar os resultados
         if st.button("Limpar Resultados"):
             st.session_state.df_filtrado = pd.DataFrame()
             st.rerun()
@@ -151,6 +148,29 @@ def render():
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
-    # Exibe a mensagem de "não encontrado" apenas no momento em que a busca é submetida.
+        if len(st.session_state.df_filtrado) == 1:
+            st.markdown("---")
+            st.markdown("#### Detalhes da Retirada")
+
+            os_selecionada = st.session_state.df_filtrado.iloc[0]
+            
+            assinatura_retirada = os_selecionada.get('assinatura_solicitante_retirada')
+            cpf_retirada = os_selecionada.get('cpf_retirada')
+
+            st.markdown("**Assinatura de Retirada:**")
+            if pd.notna(assinatura_retirada):
+                try:
+                    base64_data = assinatura_retirada.split(',')[1]
+                    image_bytes = base64.b64decode(base64_data)
+                    
+                    st.image(image_bytes, width=400) 
+
+                    if pd.notna(cpf_retirada):
+                        st.write(f"**CPF de quem retirou:** {cpf_retirada}")
+                except Exception as e:
+                    st.warning(f"Não foi possível carregar a imagem da assinatura. Detalhe do erro: {e}")
+            else:
+                st.info("Nenhuma assinatura de retirada registrada.")
+
     elif submitted:
         st.info("Não foram encontrados dados com os filtros aplicados.")
