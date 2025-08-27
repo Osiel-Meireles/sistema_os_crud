@@ -1,12 +1,12 @@
 import streamlit as st
 from database import init_db
-import os_interna, os_externa, filtro, dar_baixa
+import os_interna, os_externa, filtro, dar_baixa, dashboard # 1. Importe aqui
 import import_export
 
 st.set_page_config(layout="wide")
 st.image("Secretaria_da_Fazenda-removebg-preview.png",
          width=600)
-st.markdown("<h2 style='text-align: left;'>Sistema de Registro de Ordem de Serviço</h2>", unsafe_allow_html=True)
+st.markdown("<h2 style='text-align: left;'>Sistema de Registro de Ordens de Serviço</h2>", unsafe_allow_html=True)
 
 
 
@@ -29,6 +29,10 @@ st.sidebar.markdown("<h3 style='text-align: left;'>Navegação</h3>", unsafe_all
 
 if st.sidebar.button("Tela Inicial", use_container_width=True):
     st.session_state.page = "Home"
+    
+# 2. Adicione o novo botão aqui
+if st.sidebar.button("Dashboard", use_container_width=True):
+    st.session_state.page = "Dashboard"
 
 if st.sidebar.button("Ordem de Serviço Interna", use_container_width=True):
     st.session_state.page = "OS Interna"
@@ -61,6 +65,9 @@ if st.session_state.page == "Home":
         if st.button("Atualizar Ordens de Serviço", use_container_width=True):
             st.session_state.page = "Dar Baixa em OS"
 
+# 3. Adicione a nova condição de renderização aqui
+elif st.session_state.page == "Dashboard":
+    dashboard.render()
 elif st.session_state.page == "OS Interna":
     os_interna.render()
 elif st.session_state.page == "OS Externa":
