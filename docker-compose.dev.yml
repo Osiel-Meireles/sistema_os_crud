@@ -15,8 +15,6 @@ services:
       - .:/app
     depends_on:
       - db-dev
-    # --- LINHA MODIFICADA ---
-    # Em docker-compose.dev.yml
     command: sh -c "sleep 10 && python setup.py && streamlit run app.py --server.port 8501 --server.enableCORS false --server.enableXsrfProtection false"
 
   db-dev:

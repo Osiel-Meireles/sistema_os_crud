@@ -53,41 +53,50 @@ def render():
         submitted = st.form_submit_button("Registrar ordem de serviço", use_container_width=True, type='primary')
         
         if submitted:
-            if not all([setor, solicitante, telefone, solicitacao_cliente, patrimonio]):
-                st.error("Por favor, preencha todos os campos de texto.")
-            elif "Selecione..." in [secretaria, tecnico, categoria, equipamento]:
+            # --- Bloco de Validação Corrigido ---
+            # 1. Validação dos campos de texto obrigatórios
+            if not all([setor, solicitante, telefone, solicitacao_cliente]):
+                st.error("Por favor, preencha todos os campos de texto (Setor, Solicitante, Telefone, Solicitação).")
+                return  # Interrompe a execução aqui
+
+            # 2. Validação dos campos de seleção
+            if "Selecione..." in [secretaria, tecnico, categoria, equipamento]:
                 st.error("Por favor, selecione uma secretaria, técnico, categoria e equipamento válidos.")
-            elif canvas_result.image_data is None:
+                return  # Interrompe a execução aqui
+
+            # 3. Validação da assinatura
+            if canvas_result.image_data is None:
                 st.error("A assinatura do solicitante é obrigatória para criar a OS.")
-            else:
-                try:
-                    # Converte a assinatura para Base64
-                    img_bytes = canvas_result.image_data.tobytes()
-                    assinatura_base64 = base64.b64encode(img_bytes).decode("utf-8")
-                    assinatura_final = f"data:image/png;base64,{assinatura_base64}"
+                return  # Interrompe a execução aqui
 
-                    with conn.connect() as con:
-                        with con.begin(): 
-                            con.execute(text("LOCK TABLE os_interna IN ACCESS EXCLUSIVE MODE"))
-                            
-                            numero_os = gerar_proximo_numero_os(con, "os_interna")
-                            
-                            con.execute(
-                                text("""
-                                    INSERT INTO os_interna (numero, secretaria, setor, data, hora, solicitante, telefone, solicitacao_cliente, categoria, patrimonio, equipamento, status, tecnico, assinatura_solicitante_entrada)
-                                    VALUES (:numero, :secretaria, :setor, :data, :hora, :solicitante, :telefone, :solicitacao_cliente, :categoria, :patrimonio, :equipamento, 'EM ABERTO', :tecnico, :assinatura)
-                                """),
-                                {
-                                    "numero": numero_os, "secretaria": secretaria, "setor": setor, "data": data, "hora": hora,
-                                    "solicitante": solicitante, "telefone": telefone, "solicitacao_cliente": solicitacao_cliente,
-                                    "categoria": categoria, "patrimonio": patrimonio, "equipamento": equipamento,
-                                    "tecnico": tecnico, "assinatura": assinatura_final
-                                }
-                            )
-                    st.toast(f"✅ OS Interna nº {numero_os} adicionada com sucesso!")
+            # --- Se todas as validações passaram, o código continua para o registro ---
+            try:
+                img_bytes = canvas_result.image_data.tobytes()
+                assinatura_base64 = base64.b64encode(img_bytes).decode("utf-8")
+                assinatura_final = f"data:image/png;base64,{assinatura_base64}"
 
-                except Exception as e:
-                    st.error(f"Ocorreu um erro ao registrar a OS: {e}")
+                with conn.connect() as con:
+                    with con.begin(): 
+                        con.execute(text("LOCK TABLE os_interna IN ACCESS EXCLUSIVE MODE"))
+                        
+                        numero_os = gerar_proximo_numero_os(con, "os_interna")
+                        
+                        con.execute(
+                            text("""
+                                INSERT INTO os_interna (numero, secretaria, setor, data, hora, solicitante, telefone, solicitacao_cliente, categoria, patrimonio, equipamento, status, tecnico, assinatura_solicitante_entrada)
+                                VALUES (:numero, :secretaria, :setor, :data, :hora, :solicitante, :telefone, :solicitacao_cliente, :categoria, :patrimonio, :equipamento, 'EM ABERTO', :tecnico, :assinatura)
+                            """),
+                            {
+                                "numero": numero_os, "secretaria": secretaria, "setor": setor, "data": data, "hora": hora,
+                                "solicitante": solicitante, "telefone": telefone, "solicitacao_cliente": solicitacao_cliente,
+                                "categoria": categoria, "patrimonio": patrimonio, "equipamento": equipamento,
+                                "tecnico": tecnico, "assinatura": assinatura_final
+                            }
+                        )
+                st.toast(f"✅ OS Interna nº {numero_os} adicionada com sucesso!")
+
+            except Exception as e:
+                st.error(f"Ocorreu um erro ao registrar a OS: {e}")
 
     st.markdown("---")
     st.markdown("##### Ordens de serviço internas cadastradas: ")
