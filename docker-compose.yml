@@ -11,7 +11,8 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=1234
     depends_on:
-      - db
+      db:
+        condition: service_healthy # <-- Modificação Chave
 
   db:
     image: postgres:13
@@ -24,6 +25,11 @@ services:
       - postgres_data:/var/lib/postgresql/data/
     ports:
       - "5432:5432"
+    healthcheck: # <-- Seção Adicionada
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ordens_servico"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
 volumes:
   postgres_data:
