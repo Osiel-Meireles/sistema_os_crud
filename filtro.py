@@ -56,9 +56,9 @@ def display_os_details(os_data):
         retirada_por = os_data.get('retirada_por')
         if pd.notna(retirada_por):
             st.write(f"**Nome do recebedor:** {retirada_por}")
-        cpf_retirada = os_data.get('cpf_retirada')
-        if pd.notna(cpf_retirada):
-            st.write(f"**CPF do recebedor:** {cpf_retirada}")
+        
+        # --- CAMPO DE CPF REMOVIDO DAQUI ---
+        
         assinatura_retirada = os_data.get('assinatura_solicitante_retirada')
         if pd.notna(assinatura_retirada):
             st.markdown("**Assinatura do recebedor:**")
@@ -67,6 +67,8 @@ def display_os_details(os_data):
             except: 
                 st.warning("Não foi possível carregar a imagem da assinatura de retirada.")
 
+# O resto do arquivo (função render) permanece o mesmo.
+# ...
 def render():
     st.markdown("<h3 style='text-align: left;'>Filtrar Ordens de Serviço</h3>", unsafe_allow_html=True)
 
