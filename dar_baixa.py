@@ -93,11 +93,8 @@ def render():
             st.markdown("---")
             st.markdown("#### Confirmar Entrega e Coletar Assinatura")
             
-            col1, col2 = st.columns(2)
-            with col1:
-                retirada_por = st.text_input("Confirmado por (Nome de quem retira)", value=os_data.get('retirada_por') or '', disabled=is_delivered, key="retirada_input")
-            with col2:
-                cpf_retirada = st.text_input("CPF de quem retira (apenas números)", max_chars=11, disabled=is_delivered, key="cpf_input")
+            # --- CAMPO DE CPF REMOVIDO DAQUI ---
+            retirada_por = st.text_input("Confirmado por (Nome de quem retira)", value=os_data.get('retirada_por') or '', disabled=is_delivered, key="retirada_input")
 
             st.write("Assinatura de quem retira:")
             canvas_result = st_canvas(
@@ -109,33 +106,30 @@ def render():
             )
 
             if st.button("Confirmar Entrega e Salvar Assinatura", disabled=is_delivered, type="primary"):
-                if not st.session_state.retirada_input or not st.session_state.cpf_input:
-                    st.error("Os campos 'Confirmado por' e 'CPF' são obrigatórios.")
+                if not st.session_state.retirada_input:
+                    st.error("O campo 'Confirmado por' é obrigatório.")
                 elif canvas_result.image_data is None:
                     st.error("A assinatura é obrigatória.")
                 else:
                     try:
-                        # --- INÍCIO DA CORREÇÃO ---
-                        # Converte o desenho do canvas para uma imagem PNG antes de salvar
                         image_array = canvas_result.image_data.astype(np.uint8)
                         pil_image = Image.fromarray(image_array, 'RGBA')
                         buffer = io.BytesIO()
                         pil_image.save(buffer, format="PNG")
                         img_bytes = buffer.getvalue()
-                        # --- FIM DA CORREÇÃO ---
 
                         with conn.connect() as con:
                             with con.begin():
                                 assinatura_base64 = base64.b64encode(img_bytes).decode("utf-8")
                                 table_name_os = "os_interna" if tipo_os == "OS Interna" else "os_externa"
                                 
+                                # --- CAMPO DE CPF REMOVIDO DA QUERY ---
                                 update_query_os = text(f"""
                                     UPDATE {table_name_os}
                                     SET status = :status, 
                                         data_retirada = :data_retirada,
                                         retirada_por = :retirada_por, 
-                                        assinatura_solicitante_retirada = :assinatura,
-                                        cpf_retirada = :cpf
+                                        assinatura_solicitante_retirada = :assinatura
                                     WHERE numero = :numero
                                 """)
                                 con.execute(update_query_os, {
@@ -143,8 +137,7 @@ def render():
                                     "status": "ENTREGUE AO CLIENTE",
                                     "data_retirada": date.today(), 
                                     "retirada_por": st.session_state.retirada_input,
-                                    "assinatura": f"data:image/png;base64,{assinatura_base64}",
-                                    "cpf": st.session_state.cpf_input
+                                    "assinatura": f"data:image/png;base64,{assinatura_base64}"
                                 })
 
                         st.success(f"Retirada da OS {os_data['numero']} registrada com sucesso! Recarregando...")
