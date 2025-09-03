@@ -12,7 +12,7 @@ services:
       - DB_PASSWORD=1234
     depends_on:
       db:
-        condition: service_healthy # <-- Modificação Chave
+        condition: service_healthy # Essencial: espera o DB ficar saudável
 
   db:
     image: postgres:13
@@ -25,7 +25,7 @@ services:
       - postgres_data:/var/lib/postgresql/data/
     ports:
       - "5432:5432"
-    healthcheck: # <-- Seção Adicionada
+    healthcheck: # Essencial: define o que é "saudável"
       test: ["CMD-SHELL", "pg_isready -U postgres -d ordens_servico"]
       interval: 5s
       timeout: 5s
