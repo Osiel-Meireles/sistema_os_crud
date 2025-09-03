@@ -4,6 +4,9 @@ from sqlalchemy import text
 from datetime import date, datetime
 from streamlit_drawable_canvas import st_canvas
 import base64
+from PIL import Image
+import io
+import numpy as np
 
 from database import get_connection, gerar_proximo_numero_os
 from config import SECRETARIAS, TECNICOS, CATEGORIAS_INTERNA, EQUIPAMENTOS
@@ -53,25 +56,27 @@ def render():
         submitted = st.form_submit_button("Registrar ordem de serviço", use_container_width=True, type='primary')
         
         if submitted:
-            # --- Bloco de Validação Corrigido ---
-            # 1. Validação dos campos de texto obrigatórios
+            # Validações...
             if not all([setor, solicitante, telefone, solicitacao_cliente]):
                 st.error("Por favor, preencha todos os campos de texto (Setor, Solicitante, Telefone, Solicitação).")
-                return  # Interrompe a execução aqui
-
-            # 2. Validação dos campos de seleção
+                return
             if "Selecione..." in [secretaria, tecnico, categoria, equipamento]:
                 st.error("Por favor, selecione uma secretaria, técnico, categoria e equipamento válidos.")
-                return  # Interrompe a execução aqui
-
-            # 3. Validação da assinatura
+                return
             if canvas_result.image_data is None:
                 st.error("A assinatura do solicitante é obrigatória para criar a OS.")
-                return  # Interrompe a execução aqui
+                return
 
-            # --- Se todas as validações passaram, o código continua para o registro ---
             try:
-                img_bytes = canvas_result.image_data.tobytes()
+                # --- INÍCIO DA CORREÇÃO ---
+                # Converte o desenho do canvas para uma imagem PNG antes de salvar
+                image_array = canvas_result.image_data.astype(np.uint8)
+                pil_image = Image.fromarray(image_array, 'RGBA')
+                buffer = io.BytesIO()
+                pil_image.save(buffer, format="PNG")
+                img_bytes = buffer.getvalue()
+                # --- FIM DA CORREÇÃO ---
+
                 assinatura_base64 = base64.b64encode(img_bytes).decode("utf-8")
                 assinatura_final = f"data:image/png;base64,{assinatura_base64}"
 
