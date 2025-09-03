@@ -1,6 +1,8 @@
 import os
+import time
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.exc import OperationalError
 from datetime import datetime
 
 DB_HOST = os.getenv("DB_HOST", "localhost")
@@ -9,8 +11,30 @@ DB_USER = os.getenv("DB_USER", "postgres")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "1234")
 
 def get_connection():
+    """
+    Cria e retorna uma conexão com o banco de dados, com lógica de repetição.
+    """
     engine_url = f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}/{DB_NAME}"
-    return create_engine(engine_url)
+    retries = 10
+    delay = 5  # segundos
+
+    for i in range(retries):
+        try:
+            engine = create_engine(engine_url)
+            # A chamada create_engine() é "preguiçosa".
+            # Precisamos forçar uma conexão para testar se o banco está pronto.
+            connection = engine.connect()
+            connection.close()
+            print("Conexão com o banco de dados estabelecida com sucesso.")
+            return engine
+        except OperationalError as e:
+            print(f"Erro ao conectar ao banco de dados: {e}")
+            if i < retries - 1:
+                print(f"Tentativa {i + 1} de {retries}. Nova tentativa em {delay} segundos...")
+                time.sleep(delay)
+            else:
+                print("Não foi possível conectar ao banco de dados após múltiplas tentativas.")
+                raise  # Lança a exceção original se todas as tentativas falharem
 
 def gerar_proximo_numero_os(con, table_name):
     # ... (código da função sem alterações)
