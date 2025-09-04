@@ -9,7 +9,7 @@ services:
       - DB_NAME=ordens_servico
       - DB_USER=postgres
       - DB_PASSWORD=1234
-      - TZ=America/Sao_Paulo # Adicionado
+      - TZ=America/Sao_Paulo
     depends_on:
       db:
         condition: service_healthy
@@ -21,7 +21,7 @@ services:
       - POSTGRES_DB=ordens_servico
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=1234
-      - TZ=America/Sao_Paulo # Adicionado
+      - TZ=America/Sao_Paulo
     volumes:
       - postgres_data:/var/lib/postgresql/data/
     ports:
@@ -42,11 +42,12 @@ services:
       - DB_NAME=ordens_servico
       - DB_USER=postgres
       - DB_PASSWORD=1234
-      - TZ=America/Sao_Paulo # Adicionado
+      - TZ=America/Sao_Paulo
     volumes:
       - ./backups:/backups
     depends_on:
-      - db
+      db:
+        condition: service_healthy # Adicione esta condição
 
 volumes:
   postgres_data:
