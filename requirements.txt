@@ -8,3 +8,4 @@ odfpy
 streamlit-drawable-canvas
 Pillow
 numpy
+pytz
