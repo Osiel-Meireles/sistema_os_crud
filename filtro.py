@@ -29,12 +29,18 @@ def display_os_details(os_data):
     for col, label in col_map.items():
         if col in os_data and pd.notna(os_data[col]):
             value = os_data[col]
+            # Formatação para datas
             if col in ['data', 'data_finalizada'] and value:
                 try: value = pd.to_datetime(value).strftime('%d/%m/%Y')
                 except (ValueError, TypeError): pass
+            
+            # --- LÓGICA DE FUSO HORÁRIO ADICIONADA AQUI ---
             if col == 'data_retirada' and value:
-                try: value = pd.to_datetime(value).strftime('%d/%m/%Y %H:%M:%S')
+                try:
+                    # Converte para datetime, informa que é UTC, e converte para o fuso de São Paulo
+                    value = pd.to_datetime(value, utc=True).tz_convert('America/Sao_Paulo').strftime('%d/%m/%Y %H:%M:%S')
                 except (ValueError, TypeError): pass
+            
             display_data.append([f"**{label}**", value])
 
     st.table(pd.DataFrame(display_data, columns=["Campo", "Valor"]))
@@ -53,6 +59,8 @@ def display_os_details(os_data):
         if pd.notna(retirada_por):
             st.write(f"**Nome do recebedor:** {retirada_por}")
 
+# O resto do arquivo (função render) permanece o mesmo.
+# ...
 def render():
     st.markdown("<h3 style='text-align: left;'>Filtrar Ordens de Serviço</h3>", unsafe_allow_html=True)
     categorias_combinadas = sorted(list(set(CATEGORIAS_INTERNA[1:] + CATEGORIAS_EXTERNA[1:])))
@@ -157,17 +165,19 @@ def render():
         
         start_idx = (st.session_state.current_page - 1) * ITEMS_PER_PAGE
         end_idx = start_idx + ITEMS_PER_PAGE
-        df_paginated = df_display.iloc[start_idx:end_idx].copy() # Usar .copy() para evitar SettingWithCopyWarning
+        df_paginated = df_display.iloc[start_idx:end_idx].copy()
 
         # Formatação das colunas de data
         if 'data' in df_paginated.columns:
             df_paginated['data'] = pd.to_datetime(df_paginated['data'], errors='coerce').dt.strftime('%d/%m/%Y')
         if 'data_finalizada' in df_paginated.columns:
             df_paginated['data_finalizada'] = pd.to_datetime(df_paginated['data_finalizada'], errors='coerce').dt.strftime('%d/%m/%Y')
+        
+        # --- LÓGICA DE FUSO HORÁRIO ADICIONADA AQUI ---
         if 'data_retirada' in df_paginated.columns:
-            df_paginated['data_retirada'] = pd.to_datetime(df_paginated['data_retirada'], errors='coerce').dt.strftime('%d/%m/%Y %H:%M:%S')
+            # Converte para datetime, informa que é UTC, e converte para o fuso de São Paulo
+            df_paginated['data_retirada'] = pd.to_datetime(df_paginated['data_retirada'], utc=True, errors='coerce').dt.tz_convert('America/Sao_Paulo').dt.strftime('%d/%m/%Y %H:%M:%S')
 
-        # --- ALTERAÇÃO 1: Adiciona nova coluna e ajusta tamanhos ---
         cols_header = st.columns((0.7, 1.5, 1.5, 2, 2.5, 2.5, 1.5, 1.5))
         headers = ["Ação", "Número", "Tipo", "Status", "Secretaria", "Solicitante", "Data", "Finalizada"]
         for col, header in zip(cols_header, headers):
@@ -175,21 +185,17 @@ def render():
         st.markdown("<hr style='margin-top: 0; margin-bottom: 0;'>", unsafe_allow_html=True)
 
         for index, row in df_paginated.iterrows():
-            # --- ALTERAÇÃO 2: Adiciona nova coluna e ajusta tamanhos ---
             cols_row = st.columns((0.7, 1.5, 1.5, 2, 2.5, 2.5, 1.5, 1.5))
-            
             if cols_row[0].button("👁️", key=f"detail_{index}", help="Ver detalhes da OS"):
                 st.session_state.selected_os_index = index if st.session_state.selected_os_index != index else None
                 st.rerun()
-
             cols_row[1].write(row.get("numero", "N/A"))
             cols_row[2].write(row.get("tipo", "N/A"))
             cols_row[3].write(row.get("status", "N/A"))
             cols_row[4].write(row.get("secretaria", "N/A"))
             cols_row[5].write(row.get("solicitante", "N/A"))
             cols_row[6].write(row.get("data", "N/A"))
-            # --- ALTERAÇÃO 3: Exibe a data finalizada ---
-            cols_row[7].write(row.get("data_finalizada", "")) # Exibe a data ou string vazia
+            cols_row[7].write(row.get("data_finalizada", ""))
             
             if st.session_state.selected_os_index == index:
                 with st.expander(" ", expanded=True):
