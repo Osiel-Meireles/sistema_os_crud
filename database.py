@@ -13,9 +13,6 @@ DB_PASSWORD = os.getenv("DB_PASSWORD", "1234")
 _engine = None
 
 def get_connection():
-    """
-    Cria e retorna uma conexão com o banco de dados.
-    """
     global _engine
     if _engine is None:
         engine_url = f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}/{DB_NAME}"
@@ -25,25 +22,20 @@ def get_connection():
 def gerar_proximo_numero_os(con, table_name):
     ano_atual = datetime.now().strftime('%y')
     sufixo_ano = f"%-{ano_atual}"
-
     query = text(f"""
         SELECT COALESCE(MAX(CAST(SPLIT_PART(numero, '-', 1) AS INTEGER)), 0)
         FROM {table_name}
         WHERE numero LIKE :sufixo
     """)
-
     resultado = con.execute(query, {"sufixo": sufixo_ano}).scalar()
     proximo_sequencial = resultado + 1
     novo_numero_os = f"{proximo_sequencial}-{ano_atual}"
     return novo_numero_os
 
 def init_db(engine): 
-    """
-    Cria as tabelas no banco de dados se elas não existirem, usando o engine fornecido.
-    """
     try:
         with Session(engine) as session:
-            # Definição da tabela os_interna
+            # --- TIPO DE COLUNA ALTERADO ABAIXO ---
             session.execute(text("""
             CREATE TABLE IF NOT EXISTS os_interna (
                 id SERIAL PRIMARY KEY, numero VARCHAR(255) UNIQUE, secretaria VARCHAR(255),
@@ -51,12 +43,13 @@ def init_db(engine):
                 telefone VARCHAR(255), solicitacao_cliente TEXT, categoria VARCHAR(255),
                 patrimonio VARCHAR(255), equipamento VARCHAR(255), descricao TEXT,
                 servico_executado TEXT, status VARCHAR(255), data_finalizada DATE,
-                data_retirada DATE, retirada_por VARCHAR(255), tecnico VARCHAR(255),
-                assinatura_solicitante_retirada TEXT
+                data_retirada TIMESTAMP WITH TIME ZONE, 
+                retirada_por VARCHAR(255), 
+                tecnico VARCHAR(255)
             )
             """))
 
-            # Definição da tabela os_externa
+            # --- TIPO DE COLUNA ALTERADO ABAIXO ---
             session.execute(text("""
             CREATE TABLE IF NOT EXISTS os_externa (
                 id SERIAL PRIMARY KEY, numero VARCHAR(255) UNIQUE, secretaria VARCHAR(255),
@@ -64,8 +57,9 @@ def init_db(engine):
                 telefone VARCHAR(255), solicitacao_cliente TEXT, categoria VARCHAR(255),
                 patrimonio VARCHAR(255), equipamento VARCHAR(255), descricao TEXT,
                 servico_executado TEXT, status VARCHAR(255), data_finalizada DATE,
-                data_retirada DATE, retirada_por VARCHAR(255), tecnico VARCHAR(255),
-                assinatura_solicitante_retirada TEXT
+                data_retirada TIMESTAMP WITH TIME ZONE, 
+                retirada_por VARCHAR(255), 
+                tecnico VARCHAR(255)
             )
             """))
             session.commit()
