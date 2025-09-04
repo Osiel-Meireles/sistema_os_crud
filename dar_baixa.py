@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from database import get_connection
 from sqlalchemy import text
-from datetime import date, datetime
+from datetime import datetime
 import pytz # Importa a biblioteca de fuso horário
 from config import STATUS_OPTIONS
 
@@ -38,7 +38,7 @@ def render():
 
     if 'os_data' in st.session_state:
         os_data = st.session_state['os_data']
-        
+
         st.markdown("#### Informações da OS Encontrada:")
         st.dataframe(pd.DataFrame([os_data]))
 
@@ -50,7 +50,7 @@ def render():
             st.success("Esta OS já foi finalizada e entregue ao cliente. Nenhuma outra alteração pode ser feita.")
 
         st.markdown("---")
-        
+
         with st.form("atualizar_os_form"):
             st.markdown("#### Atualize o status da OS")
             status_update_options = [s for s in STATUS_OPTIONS if s not in ["Todos", "AGUARDANDO RETIRADA", "ENTREGUE AO CLIENTE"]]
@@ -59,7 +59,7 @@ def render():
             except ValueError: status_index = 0
             novo_status = st.selectbox("Novo Status", status_update_options, index=status_index, disabled=is_delivered)
             texto_atualizacao = st.text_area("Serviço Executado / Descrição da Atualização", value=os_data.get('descricao') if current_status == "AGUARDANDO PEÇA(S)" else os_data.get('servico_executado', ''), disabled=is_delivered)
-            data_finalizada = st.date_input("Data de Finalização", value=pd.to_datetime(os_data.get('data_finalizada')).date() if pd.notna(os_data.get('data_finalizada')) else date.today(), disabled=(novo_status != "FINALIZADO" or is_delivered))
+            
             submitted_update = st.form_submit_button("Salvar Alterações de Status", disabled=is_delivered)
             if submitted_update:
                 if novo_status == "FINALIZADO" and not texto_atualizacao:
@@ -67,7 +67,8 @@ def render():
                 else:
                     params = {"numero": os_data['numero']}
                     if novo_status == "FINALIZADO":
-                        params.update({"status": "AGUARDANDO RETIRADA", "servico_executado": texto_atualizacao, "data_finalizada": data_finalizada})
+                        data_hora_finalizada_utc = datetime.now(pytz.utc)
+                        params.update({"status": "AGUARDANDO RETIRADA", "servico_executado": texto_atualizacao, "data_finalizada": data_hora_finalizada_utc})
                     else:
                         params.update({"status": novo_status, "descricao": texto_atualizacao, "servico_executado": os_data.get('servico_executado', ''), "data_finalizada": None})
                     try:
@@ -86,33 +87,31 @@ def render():
         if can_register_retirada:
             st.markdown("---")
             st.markdown("#### Registrar Entrega ao Cliente")
-            
+
             retirada_por = st.text_input("Nome de quem está retirando", value=os_data.get('retirada_por') or '', disabled=is_delivered, key="retirada_input")
-            
+
             if st.button("Confirmar Entrega", disabled=is_delivered, type="primary"):
                 if not st.session_state.retirada_input:
                     st.error("O campo 'Nome de quem está retirando' é obrigatório.")
                 else:
                     try:
-                        # --- LÓGICA DE FUSO HORÁRIO ---
-                        # Pega a data e hora atuais no padrão universal (UTC)
                         data_hora_retirada_utc = datetime.now(pytz.utc)
 
                         with conn.connect() as con:
                             with con.begin():
                                 table_name_os = "os_interna" if tipo_os == "OS Interna" else "os_externa"
-                                
+
                                 update_query_os = text(f"""
                                     UPDATE {table_name_os}
-                                    SET status = :status, 
+                                    SET status = :status,
                                         data_retirada = :data_retirada,
                                         retirada_por = :retirada_por
                                     WHERE numero = :numero
                                 """)
                                 con.execute(update_query_os, {
-                                    "numero": os_data['numero'], 
+                                    "numero": os_data['numero'],
                                     "status": "ENTREGUE AO CLIENTE",
-                                    "data_retirada": data_hora_retirada_utc, # Salva a data e hora em UTC
+                                    "data_retirada": data_hora_retirada_utc,
                                     "retirada_por": st.session_state.retirada_input,
                                 })
 
