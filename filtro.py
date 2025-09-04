@@ -29,15 +29,14 @@ def display_os_details(os_data):
     for col, label in col_map.items():
         if col in os_data and pd.notna(os_data[col]):
             value = os_data[col]
-            # Formatação para datas
-            if col in ['data', 'data_finalizada'] and value:
+            # Formatação para data de entrada
+            if col == 'data' and value:
                 try: value = pd.to_datetime(value).strftime('%d/%m/%Y')
                 except (ValueError, TypeError): pass
             
-            # --- LÓGICA DE FUSO HORÁRIO ATUALIZADA ---
-            if col == 'data_retirada' and value:
+            # Formatação para datas com hora (finalização e retirada)
+            if col in ['data_finalizada', 'data_retirada'] and value:
                 try:
-                    # Lê a data como UTC e converte para o fuso de São Paulo
                     value = pd.to_datetime(value, utc=True).tz_convert('America/Sao_Paulo').strftime('%d/%m/%Y %H:%M:%S')
                 except (ValueError, TypeError): pass
             
@@ -59,8 +58,6 @@ def display_os_details(os_data):
         if pd.notna(retirada_por):
             st.write(f"**Nome do recebedor:** {retirada_por}")
 
-# O resto do arquivo (função render) permanece o mesmo.
-# ...
 def render():
     st.markdown("<h3 style='text-align: left;'>Filtrar Ordens de Serviço</h3>", unsafe_allow_html=True)
     categorias_combinadas = sorted(list(set(CATEGORIAS_INTERNA[1:] + CATEGORIAS_EXTERNA[1:])))
@@ -170,22 +167,21 @@ def render():
         # Formatação das colunas de data
         if 'data' in df_paginated.columns:
             df_paginated['data'] = pd.to_datetime(df_paginated['data'], errors='coerce').dt.strftime('%d/%m/%Y')
-        if 'data_finalizada' in df_paginated.columns:
-            df_paginated['data_finalizada'] = pd.to_datetime(df_paginated['data_finalizada'], errors='coerce').dt.strftime('%d/%m/%Y')
         
-        # --- LÓGICA DE FUSO HORÁRIO ATUALIZADA ---
+        if 'data_finalizada' in df_paginated.columns:
+            df_paginated['data_finalizada'] = pd.to_datetime(df_paginated['data_finalizada'], utc=True, errors='coerce').dt.tz_convert('America/Sao_Paulo').dt.strftime('%d/%m/%Y %H:%M:%S')
+
         if 'data_retirada' in df_paginated.columns:
-            # Lê a data como UTC e converte para o fuso de São Paulo
             df_paginated['data_retirada'] = pd.to_datetime(df_paginated['data_retirada'], utc=True, errors='coerce').dt.tz_convert('America/Sao_Paulo').dt.strftime('%d/%m/%Y %H:%M:%S')
 
-        cols_header = st.columns((0.7, 1.5, 1.5, 2, 2.5, 2.5, 1.5, 1.5))
+        cols_header = st.columns((0.7, 1.5, 1.5, 2, 2.5, 2.5, 1.5, 2.5))
         headers = ["Ação", "Número", "Tipo", "Status", "Secretaria", "Solicitante", "Data", "Finalizada"]
         for col, header in zip(cols_header, headers):
             col.markdown(f"**{header}**")
         st.markdown("<hr style='margin-top: 0; margin-bottom: 0;'>", unsafe_allow_html=True)
 
         for index, row in df_paginated.iterrows():
-            cols_row = st.columns((0.7, 1.5, 1.5, 2, 2.5, 2.5, 1.5, 1.5))
+            cols_row = st.columns((0.7, 1.5, 1.5, 2, 2.5, 2.5, 1.5, 2.5))
             if cols_row[0].button("👁️", key=f"detail_{index}", help="Ver detalhes da OS"):
                 st.session_state.selected_os_index = index if st.session_state.selected_os_index != index else None
                 st.rerun()
