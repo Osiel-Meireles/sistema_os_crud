@@ -21,15 +21,19 @@ def display_os_details(os_data):
         "setor": "Setor", "solicitante": "Solicitante", "telefone": "Telefone",
         "data": "Data de Entrada", "hora": "Hora de Entrada", "tecnico": "Técnico",
         "equipamento": "Equipamento", "patrimonio": "Patrimônio", "categoria": "Categoria",
-        "data_finalizada": "Data de Finalização"
+        "data_finalizada": "Data de Finalização",
+        "data_retirada": "Data de Retirada"
     }
     
     display_data = []
     for col, label in col_map.items():
         if col in os_data and pd.notna(os_data[col]):
             value = os_data[col]
-            if 'data' in col and value:
+            if col in ['data', 'data_finalizada'] and value:
                 try: value = pd.to_datetime(value).strftime('%d/%m/%Y')
+                except (ValueError, TypeError): pass
+            if col == 'data_retirada' and value:
+                try: value = pd.to_datetime(value).strftime('%d/%m/%Y %H:%M:%S')
                 except (ValueError, TypeError): pass
             display_data.append([f"**{label}**", value])
 
@@ -42,29 +46,15 @@ def display_os_details(os_data):
     texto_completo = f"{os_data.get('servico_executado', '') or ''}\n{os_data.get('descricao', '') or ''}".strip()
     st.text_area("servico_exp", value=texto_completo, disabled=True, label_visibility="collapsed", height=100)
     
-    # --- CAMPO DE ASSINATURA DE ENTRADA REMOVIDO DAQUI ---
-
     if os_data.get('status') == 'ENTREGUE AO CLIENTE':
         st.markdown("---")
         st.markdown("#### Informações da Entrega")
         retirada_por = os_data.get('retirada_por')
         if pd.notna(retirada_por):
             st.write(f"**Nome do recebedor:** {retirada_por}")
-        
-        assinatura_retirada = os_data.get('assinatura_solicitante_retirada')
-        if pd.notna(assinatura_retirada):
-            st.markdown("**Assinatura do recebedor:**")
-            try: 
-                st.image(base64.b64decode(assinatura_retirada.split(',')[1]), width=400)
-            except: 
-                st.warning("Não foi possível carregar a imagem da assinatura de retirada.")
 
-# O resto do arquivo (função render) permanece o mesmo.
-# ...
 def render():
     st.markdown("<h3 style='text-align: left;'>Filtrar Ordens de Serviço</h3>", unsafe_allow_html=True)
-
-    # --- Seção do Formulário ---
     categorias_combinadas = sorted(list(set(CATEGORIAS_INTERNA[1:] + CATEGORIAS_EXTERNA[1:])))
     secretarias_filtro = ["Todas"] + sorted(SECRETARIAS[1:])
     tecnicos_filtro = ["Todos"] + sorted(TECNICOS[1:])
@@ -74,7 +64,6 @@ def render():
     if 'df_filtrado' not in st.session_state:
         st.session_state.df_filtrado = pd.DataFrame()
     
-    # --- Inicialização das variáveis de estado para paginação ---
     if 'current_page' not in st.session_state:
         st.session_state.current_page = 1
     if 'selected_os_index' not in st.session_state:
@@ -100,7 +89,6 @@ def render():
             patrimonio = st.text_input("Número do Patrimônio (opcional)")
         submitted = st.form_submit_button("Filtrar", type="primary")
 
-    # --- Seção de busca no DB ---
     if submitted:
         conn = get_connection()
         try:
@@ -157,9 +145,7 @@ def render():
     if not st.session_state.df_filtrado.empty:
         st.markdown("---")
         st.markdown("#### Resultados da Busca")
-        
         df_display = st.session_state.df_filtrado.copy()
-        
         ITEMS_PER_PAGE = 20
         total_items = len(df_display)
         total_pages = math.ceil(total_items / ITEMS_PER_PAGE)
@@ -171,22 +157,26 @@ def render():
         
         start_idx = (st.session_state.current_page - 1) * ITEMS_PER_PAGE
         end_idx = start_idx + ITEMS_PER_PAGE
-        df_paginated = df_display.iloc[start_idx:end_idx]
+        df_paginated = df_display.iloc[start_idx:end_idx].copy() # Usar .copy() para evitar SettingWithCopyWarning
 
-        date_cols = ['data', 'data_finalizada', 'data_retirada']
-        for col in date_cols:
-            if col in df_paginated.columns:
-                df_paginated[col] = pd.to_datetime(df_paginated[col], errors='coerce').dt.strftime('%d/%m/%Y')
-        
-        cols_header = st.columns((0.7, 1.5, 2, 2, 3, 3, 2))
-        headers = ["Ação", "Número", "Tipo", "Status", "Secretaria", "Solicitante", "Data"]
+        # Formatação das colunas de data
+        if 'data' in df_paginated.columns:
+            df_paginated['data'] = pd.to_datetime(df_paginated['data'], errors='coerce').dt.strftime('%d/%m/%Y')
+        if 'data_finalizada' in df_paginated.columns:
+            df_paginated['data_finalizada'] = pd.to_datetime(df_paginated['data_finalizada'], errors='coerce').dt.strftime('%d/%m/%Y')
+        if 'data_retirada' in df_paginated.columns:
+            df_paginated['data_retirada'] = pd.to_datetime(df_paginated['data_retirada'], errors='coerce').dt.strftime('%d/%m/%Y %H:%M:%S')
+
+        # --- ALTERAÇÃO 1: Adiciona nova coluna e ajusta tamanhos ---
+        cols_header = st.columns((0.7, 1.5, 1.5, 2, 2.5, 2.5, 1.5, 1.5))
+        headers = ["Ação", "Número", "Tipo", "Status", "Secretaria", "Solicitante", "Data", "Finalizada"]
         for col, header in zip(cols_header, headers):
             col.markdown(f"**{header}**")
-        
         st.markdown("<hr style='margin-top: 0; margin-bottom: 0;'>", unsafe_allow_html=True)
 
         for index, row in df_paginated.iterrows():
-            cols_row = st.columns((0.7, 1.5, 2, 2, 3, 3, 2))
+            # --- ALTERAÇÃO 2: Adiciona nova coluna e ajusta tamanhos ---
+            cols_row = st.columns((0.7, 1.5, 1.5, 2, 2.5, 2.5, 1.5, 1.5))
             
             if cols_row[0].button("👁️", key=f"detail_{index}", help="Ver detalhes da OS"):
                 st.session_state.selected_os_index = index if st.session_state.selected_os_index != index else None
@@ -198,6 +188,8 @@ def render():
             cols_row[4].write(row.get("secretaria", "N/A"))
             cols_row[5].write(row.get("solicitante", "N/A"))
             cols_row[6].write(row.get("data", "N/A"))
+            # --- ALTERAÇÃO 3: Exibe a data finalizada ---
+            cols_row[7].write(row.get("data_finalizada", "")) # Exibe a data ou string vazia
             
             if st.session_state.selected_os_index == index:
                 with st.expander(" ", expanded=True):
@@ -205,21 +197,16 @@ def render():
                     if st.button("Fechar Detalhes", key=f"close_{index}", use_container_width=True):
                         st.session_state.selected_os_index = None
                         st.rerun()
-            
             st.markdown("<hr style='margin-top: 0; margin-bottom: 0;'>", unsafe_allow_html=True)
-            
         st.markdown(" ")
         
         if total_pages > 1:
             col_nav1, col_nav2, col_nav3 = st.columns([1, 1, 1])
-            
             if col_nav1.button("Anterior", disabled=(st.session_state.current_page <= 1)):
                 st.session_state.current_page -= 1
                 st.session_state.selected_os_index = None
                 st.rerun()
-
             col_nav2.write(f"**Página {st.session_state.current_page} de {total_pages}**")
-            
             if col_nav3.button("Próxima", disabled=(st.session_state.current_page >= total_pages)):
                 st.session_state.current_page += 1
                 st.session_state.selected_os_index = None
@@ -232,9 +219,7 @@ def render():
             st.session_state.selected_os_index = None
             st.session_state.current_page = 1
             st.rerun()
-
         excel_bytes = exportar_filtrados_para_excel(st.session_state.df_filtrado)
         col_b2.download_button("Exportar para Excel", excel_bytes, "dados_filtrados.xlsx")
-
     elif submitted:
         st.info("Não foram encontrados dados com os filtros aplicados.")
