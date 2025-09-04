@@ -32,33 +32,33 @@ def gerar_proximo_numero_os(con, table_name):
     novo_numero_os = f"{proximo_sequencial}-{ano_atual}"
     return novo_numero_os
 
-def init_db(engine): 
+def init_db(engine):
     try:
         with Session(engine) as session:
-            # --- TIPO DE COLUNA ALTERADO ABAIXO ---
             session.execute(text("""
             CREATE TABLE IF NOT EXISTS os_interna (
                 id SERIAL PRIMARY KEY, numero VARCHAR(255) UNIQUE, secretaria VARCHAR(255),
                 setor VARCHAR(255), data DATE, hora TIME, solicitante VARCHAR(255),
                 telefone VARCHAR(255), solicitacao_cliente TEXT, categoria VARCHAR(255),
                 patrimonio VARCHAR(255), equipamento VARCHAR(255), descricao TEXT,
-                servico_executado TEXT, status VARCHAR(255), data_finalizada DATE,
-                data_retirada TIMESTAMP WITH TIME ZONE, 
-                retirada_por VARCHAR(255), 
+                servico_executado TEXT, status VARCHAR(255),
+                data_finalizada TIMESTAMP WITH TIME ZONE,
+                data_retirada TIMESTAMP WITH TIME ZONE,
+                retirada_por VARCHAR(255),
                 tecnico VARCHAR(255)
             )
             """))
 
-            # --- TIPO DE COLUNA ALTERADO ABAIXO ---
             session.execute(text("""
             CREATE TABLE IF NOT EXISTS os_externa (
                 id SERIAL PRIMARY KEY, numero VARCHAR(255) UNIQUE, secretaria VARCHAR(255),
                 setor VARCHAR(255), data DATE, hora TIME, solicitante VARCHAR(255),
                 telefone VARCHAR(255), solicitacao_cliente TEXT, categoria VARCHAR(255),
                 patrimonio VARCHAR(255), equipamento VARCHAR(255), descricao TEXT,
-                servico_executado TEXT, status VARCHAR(255), data_finalizada DATE,
-                data_retirada TIMESTAMP WITH TIME ZONE, 
-                retirada_por VARCHAR(255), 
+                servico_executado TEXT, status VARCHAR(255),
+                data_finalizada TIMESTAMP WITH TIME ZONE,
+                data_retirada TIMESTAMP WITH TIME ZONE,
+                retirada_por VARCHAR(255),
                 tecnico VARCHAR(255)
             )
             """))
