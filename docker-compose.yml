@@ -9,6 +9,9 @@ services:
       - DB_NAME=ordens_servico
       - DB_USER=postgres
       - DB_PASSWORD=1234
+    volumes: # Adicionado para sincronizar o fuso horário
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
     depends_on:
       db:
         condition: service_healthy
@@ -42,6 +45,8 @@ services:
       - DB_PASSWORD=1234
     volumes:
       - ./backups:/backups
+      - /etc/timezone:/etc/timezone:ro   # Adicionado para sincronizar o fuso horário
+      - /etc/localtime:/etc/localtime:ro # Adicionado para sincronizar o fuso horário
     depends_on:
       - db
 
