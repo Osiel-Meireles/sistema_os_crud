@@ -34,11 +34,11 @@ def display_os_details(os_data):
                 try: value = pd.to_datetime(value).strftime('%d/%m/%Y')
                 except (ValueError, TypeError): pass
             
-            # --- LÓGICA DE FUSO HORÁRIO ADICIONADA AQUI ---
+            # --- LÓGICA SIMPLIFICADA AQUI ---
             if col == 'data_retirada' and value:
                 try:
-                    # Converte para datetime, informa que é UTC, e converte para o fuso de São Paulo
-                    value = pd.to_datetime(value, utc=True).tz_convert('America/Sao_Paulo').strftime('%d/%m/%Y %H:%M:%S')
+                    # Apenas formata a data e hora que vêm do banco
+                    value = pd.to_datetime(value).strftime('%d/%m/%Y %H:%M:%S')
                 except (ValueError, TypeError): pass
             
             display_data.append([f"**{label}**", value])
@@ -173,10 +173,10 @@ def render():
         if 'data_finalizada' in df_paginated.columns:
             df_paginated['data_finalizada'] = pd.to_datetime(df_paginated['data_finalizada'], errors='coerce').dt.strftime('%d/%m/%Y')
         
-        # --- LÓGICA DE FUSO HORÁRIO ADICIONADA AQUI ---
+        # --- LÓGICA SIMPLIFICADA AQUI ---
         if 'data_retirada' in df_paginated.columns:
-            # Converte para datetime, informa que é UTC, e converte para o fuso de São Paulo
-            df_paginated['data_retirada'] = pd.to_datetime(df_paginated['data_retirada'], utc=True, errors='coerce').dt.tz_convert('America/Sao_Paulo').dt.strftime('%d/%m/%Y %H:%M:%S')
+            # Apenas formata a data e hora que vêm do banco
+            df_paginated['data_retirada'] = pd.to_datetime(df_paginated['data_retirada'], errors='coerce').dt.strftime('%d/%m/%Y %H:%M:%S')
 
         cols_header = st.columns((0.7, 1.5, 1.5, 2, 2.5, 2.5, 1.5, 1.5))
         headers = ["Ação", "Número", "Tipo", "Status", "Secretaria", "Solicitante", "Data", "Finalizada"]
