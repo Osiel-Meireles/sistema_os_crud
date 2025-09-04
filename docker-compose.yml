@@ -1,9 +1,7 @@
-version: '3.8'
-
 services:
   app:
     build: .
-    restart: always # <-- GARANTE QUE A APLICAÇÃO SEMPRE REINICIE
+    restart: always
     ports:
       - "8501:8501"
     environment:
@@ -17,7 +15,7 @@ services:
 
   db:
     image: postgres:13
-    restart: always # <-- GARANTE QUE O BANCO SEMPRE REINICIE
+    restart: always
     environment:
       - POSTGRES_DB=ordens_servico
       - POSTGRES_USER=postgres
@@ -36,7 +34,7 @@ services:
     build:
       context: .
       dockerfile: backup.dockerfile
-    restart: always # <-- GARANTE QUE O BACKUP SEMPRE REINICIE
+    restart: always
     environment:
       - DB_HOST=db
       - DB_NAME=ordens_servico
