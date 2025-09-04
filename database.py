@@ -6,34 +6,22 @@ from sqlalchemy.exc import OperationalError
 from datetime import datetime
 
 DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_NAME = os.getenv("DB_NAME", "ordens_servico_dev")
+DB_NAME = os.getenv("DB_NAME", "ordens_servico")
 DB_USER = os.getenv("DB_USER", "postgres")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "1234")
 
-def get_connection(db_name=DB_NAME):
-    """
-    Cria e retorna uma conexão com um banco de dados específico, com lógica de repetição.
-    """
-    engine_url = f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}/{db_name}"
-    retries = 10
-    delay = 5  # segundos
+# Cache da conexão para que a aplicação não precise recriar a cada vez
+_engine = None
 
-    for i in range(retries):
-        try:
-            engine = create_engine(engine_url)
-            connection = engine.connect()
-            connection.close()
-            print(f"Conexão com o banco de dados '{db_name}' estabelecida com sucesso.")
-            return engine
-        except OperationalError as e:
-            print(f"Erro ao conectar ao banco de dados '{db_name}': {e}")
-            if i < retries - 1:
-                print(f"Tentativa {i + 1} de {retries}. Nova tentativa em {delay} segundos...")
-                time.sleep(delay)
-            else:
-                print(f"Não foi possível conectar ao banco de dados '{db_name}' após múltiplas tentativas.")
-                raise
-    return None
+def get_connection():
+    """
+    Cria e retorna uma conexão com o banco de dados.
+    """
+    global _engine
+    if _engine is None:
+        engine_url = f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}/{DB_NAME}"
+        _engine = create_engine(engine_url)
+    return _engine
 
 def gerar_proximo_numero_os(con, table_name):
     ano_atual = datetime.now().strftime('%y')
@@ -50,11 +38,11 @@ def gerar_proximo_numero_os(con, table_name):
     novo_numero_os = f"{proximo_sequencial}-{ano_atual}"
     return novo_numero_os
 
-def init_db():
+# --- FUNÇÃO CORRIGIDA ABAIXO ---
+def init_db(engine): 
     """
-    Cria as tabelas no banco de dados se elas não existirem.
+    Cria as tabelas no banco de dados se elas não existirem, usando o engine fornecido.
     """
-    engine = get_connection()
     try:
         with Session(engine) as session:
             # Definição da tabela os_interna
@@ -84,5 +72,5 @@ def init_db():
             """))
             session.commit()
     except Exception as e:
-        print(f"ERRO AO INICIAR O BANCO DE DADOS: {e}")
+        print(f"ERRO AO CRIAR AS TABELAS: {e}")
         raise e
