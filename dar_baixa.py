@@ -2,15 +2,9 @@ import streamlit as st
 import pandas as pd
 from database import get_connection
 from sqlalchemy import text
-from datetime import date
+from datetime import date, datetime
+import pytz # Importa a biblioteca de fuso horário
 from config import STATUS_OPTIONS
-from streamlit_drawable_canvas import st_canvas
-import base64
-
-# Importações adicionadas para o processamento correto da imagem
-from PIL import Image
-import io
-import numpy as np
 
 def render():
     st.markdown("<h3 style='text-align: left;'>Atualizar Ordem de Serviço</h3>", unsafe_allow_html=True)
@@ -91,53 +85,37 @@ def render():
 
         if can_register_retirada:
             st.markdown("---")
-            st.markdown("#### Confirmar Entrega e Coletar Assinatura")
+            st.markdown("#### Registrar Entrega ao Cliente")
             
-            # --- CAMPO DE CPF REMOVIDO DAQUI ---
-            retirada_por = st.text_input("Confirmado por (Nome de quem retira)", value=os_data.get('retirada_por') or '', disabled=is_delivered, key="retirada_input")
-
-            st.write("Assinatura de quem retira:")
-            canvas_result = st_canvas(
-                fill_color="rgba(255, 165, 0, 0.3)",
-                stroke_width=3, stroke_color="#000000",
-                background_color="#FFFFFF", height=150, width=600,
-                drawing_mode="freedraw", key="canvas",
-                display_toolbar=not is_delivered
-            )
-
-            if st.button("Confirmar Entrega e Salvar Assinatura", disabled=is_delivered, type="primary"):
+            retirada_por = st.text_input("Nome de quem está retirando", value=os_data.get('retirada_por') or '', disabled=is_delivered, key="retirada_input")
+            
+            if st.button("Confirmar Entrega", disabled=is_delivered, type="primary"):
                 if not st.session_state.retirada_input:
-                    st.error("O campo 'Confirmado por' é obrigatório.")
-                elif canvas_result.image_data is None:
-                    st.error("A assinatura é obrigatória.")
+                    st.error("O campo 'Nome de quem está retirando' é obrigatório.")
                 else:
                     try:
-                        image_array = canvas_result.image_data.astype(np.uint8)
-                        pil_image = Image.fromarray(image_array, 'RGBA')
-                        buffer = io.BytesIO()
-                        pil_image.save(buffer, format="PNG")
-                        img_bytes = buffer.getvalue()
+                        # --- LÓGICA DE FUSO HORÁRIO ---
+                        # Define o fuso horário de São Paulo (que segue o Horário de Brasília)
+                        br_timezone = pytz.timezone("America/Sao_Paulo")
+                        # Pega a data e hora atuais com o fuso horário correto
+                        data_hora_retirada = datetime.now(br_timezone)
 
                         with conn.connect() as con:
                             with con.begin():
-                                assinatura_base64 = base64.b64encode(img_bytes).decode("utf-8")
                                 table_name_os = "os_interna" if tipo_os == "OS Interna" else "os_externa"
                                 
-                                # --- CAMPO DE CPF REMOVIDO DA QUERY ---
                                 update_query_os = text(f"""
                                     UPDATE {table_name_os}
                                     SET status = :status, 
                                         data_retirada = :data_retirada,
-                                        retirada_por = :retirada_por, 
-                                        assinatura_solicitante_retirada = :assinatura
+                                        retirada_por = :retirada_por
                                     WHERE numero = :numero
                                 """)
                                 con.execute(update_query_os, {
                                     "numero": os_data['numero'], 
                                     "status": "ENTREGUE AO CLIENTE",
-                                    "data_retirada": date.today(), 
+                                    "data_retirada": data_hora_retirada, # Salva data e hora com fuso
                                     "retirada_por": st.session_state.retirada_input,
-                                    "assinatura": f"data:image/png;base64,{assinatura_base64}"
                                 })
 
                         st.success(f"Retirada da OS {os_data['numero']} registrada com sucesso! Recarregando...")
