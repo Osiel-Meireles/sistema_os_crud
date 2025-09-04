@@ -205,7 +205,7 @@ def importar_os_interna(file) -> int:
         "STATUS": "status",
         "DATA FINALIZADA": "data_finalizada",
         "DATAFINALIZADA": "data_finalizada",
-        "DATA DE RETIRADA": "data_retirada",
+        "DATA DE RETIRada": "data_retirada",
         "DATADERETIRADA": "data_retirada",
         "RETIRADA POR": "retirada_por",
         "RETIRADAPOR": "retirada_por"
@@ -303,8 +303,19 @@ def exportar_filtrados_para_excel(df: pd.DataFrame) -> bytes:
     Exporta um DataFrame filtrado para um único arquivo Excel em memória.
     Retorna os bytes para usar em st.download_button.
     """
+    df_export = df.copy()
+
+    # --- INÍCIO DA CORREÇÃO ---
+    # Converte colunas de data com fuso horário para 'timezone-naive' antes de exportar
+    for col in ['data_finalizada', 'data_retirada']:
+        if col in df_export.columns and pd.api.types.is_datetime64_any_dtype(df_export[col]):
+            # Converte para o fuso horário de São Paulo e depois remove a informação de timezone
+            df_export[col] = pd.to_datetime(df_export[col], utc=True).dt.tz_convert('America/Sao_Paulo')
+            df_export[col] = df_export[col].dt.tz_localize(None)
+    # --- FIM DA CORREÇÃO ---
+
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
-        df.to_excel(writer, sheet_name="Dados Filtrados", index=False)
+        df_export.to_excel(writer, sheet_name="Dados Filtrados", index=False)
     buffer.seek(0)
     return buffer.getvalue()
