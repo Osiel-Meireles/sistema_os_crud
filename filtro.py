@@ -42,13 +42,7 @@ def display_os_details(os_data):
     texto_completo = f"{os_data.get('servico_executado', '') or ''}\n{os_data.get('descricao', '') or ''}".strip()
     st.text_area("servico_exp", value=texto_completo, disabled=True, label_visibility="collapsed", height=100)
     
-    assinatura_entrada = os_data.get('assinatura_solicitante_entrada')
-    if pd.notna(assinatura_entrada):
-        st.markdown("**Assinatura de Entrada:**")
-        try: 
-            st.image(base64.b64decode(assinatura_entrada.split(',')[1]), width=400)
-        except: 
-            st.warning("Não foi possível carregar a imagem da assinatura de entrada.")
+    # --- CAMPO DE ASSINATURA DE ENTRADA REMOVIDO DAQUI ---
 
     if os_data.get('status') == 'ENTREGUE AO CLIENTE':
         st.markdown("---")
@@ -56,8 +50,6 @@ def display_os_details(os_data):
         retirada_por = os_data.get('retirada_por')
         if pd.notna(retirada_por):
             st.write(f"**Nome do recebedor:** {retirada_por}")
-        
-        # --- CAMPO DE CPF REMOVIDO DAQUI ---
         
         assinatura_retirada = os_data.get('assinatura_solicitante_retirada')
         if pd.notna(assinatura_retirada):
@@ -156,26 +148,22 @@ def render():
                     df_final = pd.concat([df_final, df_externa])
                 
                 st.session_state.df_filtrado = df_final.reset_index(drop=True)
-                # --- Reseta para a primeira página a cada nova busca ---
                 st.session_state.current_page = 1
                 st.session_state.selected_os_index = None
         except Exception as e:
             st.error(f"Ocorreu um erro ao executar a consulta: {e}")
             st.session_state.df_filtrado = pd.DataFrame()
 
-    # --- Seção de Exibição dos Resultados com PAGINAÇÃO ---
     if not st.session_state.df_filtrado.empty:
         st.markdown("---")
         st.markdown("#### Resultados da Busca")
         
         df_display = st.session_state.df_filtrado.copy()
         
-        # --- Lógica de Paginação ---
-        ITEMS_PER_PAGE = 20  # <-- Você pode ajustar este número
+        ITEMS_PER_PAGE = 20
         total_items = len(df_display)
         total_pages = math.ceil(total_items / ITEMS_PER_PAGE)
         
-        # Garante que a página atual não seja inválida
         if st.session_state.current_page > total_pages:
             st.session_state.current_page = total_pages
         if st.session_state.current_page < 1:
@@ -190,7 +178,6 @@ def render():
             if col in df_paginated.columns:
                 df_paginated[col] = pd.to_datetime(df_paginated[col], errors='coerce').dt.strftime('%d/%m/%Y')
         
-        # Cabeçalho da Tabela
         cols_header = st.columns((0.7, 1.5, 2, 2, 3, 3, 2))
         headers = ["Ação", "Número", "Tipo", "Status", "Secretaria", "Solicitante", "Data"]
         for col, header in zip(cols_header, headers):
@@ -198,7 +185,6 @@ def render():
         
         st.markdown("<hr style='margin-top: 0; margin-bottom: 0;'>", unsafe_allow_html=True)
 
-        # Loop para exibir as linhas da página atual
         for index, row in df_paginated.iterrows():
             cols_row = st.columns((0.7, 1.5, 2, 2, 3, 3, 2))
             
@@ -222,9 +208,8 @@ def render():
             
             st.markdown("<hr style='margin-top: 0; margin-bottom: 0;'>", unsafe_allow_html=True)
             
-        st.markdown(" ") # Espaçamento
+        st.markdown(" ")
         
-        # --- Controles de Paginação ---
         if total_pages > 1:
             col_nav1, col_nav2, col_nav3 = st.columns([1, 1, 1])
             
@@ -240,7 +225,6 @@ def render():
                 st.session_state.selected_os_index = None
                 st.rerun()
 
-        # Botões de Limpar e Exportar
         st.markdown("---")
         col_b1, col_b2, _ = st.columns([1, 1, 4])
         if col_b1.button("Limpar Resultados"):
