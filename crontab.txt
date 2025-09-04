@@ -1,0 +1,3 @@
+# Executa o script de backup todos os dias às 2 da manhã
+0 2 * * * /app/backup.sh >> /var/log/cron.log 2>&1
+# Uma linha em branco no final é necessária para o cron
