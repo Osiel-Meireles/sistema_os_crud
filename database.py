@@ -10,7 +10,6 @@ DB_NAME = os.getenv("DB_NAME", "ordens_servico")
 DB_USER = os.getenv("DB_USER", "postgres")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "1234")
 
-# Cache da conexão para que a aplicação não precise recriar a cada vez
 _engine = None
 
 def get_connection():
@@ -38,7 +37,6 @@ def gerar_proximo_numero_os(con, table_name):
     novo_numero_os = f"{proximo_sequencial}-{ano_atual}"
     return novo_numero_os
 
-# --- FUNÇÃO CORRIGIDA ABAIXO ---
 def init_db(engine): 
     """
     Cria as tabelas no banco de dados se elas não existirem, usando o engine fornecido.
@@ -54,7 +52,7 @@ def init_db(engine):
                 patrimonio VARCHAR(255), equipamento VARCHAR(255), descricao TEXT,
                 servico_executado TEXT, status VARCHAR(255), data_finalizada DATE,
                 data_retirada DATE, retirada_por VARCHAR(255), tecnico VARCHAR(255),
-                assinatura_solicitante_entrada TEXT, assinatura_solicitante_retirada TEXT
+                assinatura_solicitante_retirada TEXT
             )
             """))
 
@@ -67,7 +65,7 @@ def init_db(engine):
                 patrimonio VARCHAR(255), equipamento VARCHAR(255), descricao TEXT,
                 servico_executado TEXT, status VARCHAR(255), data_finalizada DATE,
                 data_retirada DATE, retirada_por VARCHAR(255), tecnico VARCHAR(255),
-                assinatura_solicitante_entrada TEXT, assinatura_solicitante_retirada TEXT
+                assinatura_solicitante_retirada TEXT
             )
             """))
             session.commit()
