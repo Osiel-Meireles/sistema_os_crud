@@ -3,7 +3,6 @@ import pandas as pd
 from database import get_connection
 from sqlalchemy import text
 from datetime import date, datetime
-import pytz # Importa a biblioteca de fuso horário
 from config import STATUS_OPTIONS
 
 def render():
@@ -94,10 +93,6 @@ def render():
                     st.error("O campo 'Nome de quem está retirando' é obrigatório.")
                 else:
                     try:
-                        # --- LÓGICA DE FUSO HORÁRIO ---
-                        # Pega a data e hora atuais no padrão universal (UTC)
-                        data_hora_retirada_utc = datetime.now(pytz.utc)
-
                         with conn.connect() as con:
                             with con.begin():
                                 table_name_os = "os_interna" if tipo_os == "OS Interna" else "os_externa"
@@ -112,7 +107,7 @@ def render():
                                 con.execute(update_query_os, {
                                     "numero": os_data['numero'], 
                                     "status": "ENTREGUE AO CLIENTE",
-                                    "data_retirada": data_hora_retirada_utc, # Salva a data e hora em UTC
+                                    "data_retirada": datetime.now(), # Pega a hora local do contêiner (sincronizada com o servidor)
                                     "retirada_por": st.session_state.retirada_input,
                                 })
 
