@@ -94,9 +94,9 @@ def render():
                     st.error("O campo 'Nome de quem está retirando' é obrigatório.")
                 else:
                     try:
-                        # --- LÓGICA DE FUSO HORÁRIO ---
-                        # Pega a data e hora atuais no padrão universal (UTC)
-                        data_hora_retirada_utc = datetime.now(pytz.utc)
+                        # --- LÓGICA DE FUSO HORÁRIO CORRIGIDA ---
+                        br_timezone = pytz.timezone("America/Sao_Paulo")
+                        data_hora_retirada = datetime.now(br_timezone)
 
                         with conn.connect() as con:
                             with con.begin():
@@ -112,7 +112,7 @@ def render():
                                 con.execute(update_query_os, {
                                     "numero": os_data['numero'], 
                                     "status": "ENTREGUE AO CLIENTE",
-                                    "data_retirada": data_hora_retirada_utc, # Salva a data e hora em UTC
+                                    "data_retirada": data_hora_retirada,
                                     "retirada_por": st.session_state.retirada_input,
                                 })
 
