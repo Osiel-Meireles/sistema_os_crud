@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from sqlalchemy import text
 from datetime import date, datetime
+import math
 
 from database import get_connection, gerar_proximo_numero_os
 from config import SECRETARIAS, TECNICOS, CATEGORIAS_EXTERNA, EQUIPAMENTOS
@@ -35,8 +36,6 @@ def render():
             equipamento = st.selectbox("Equipamento", equipamentos_sorted)
             hora = st.time_input("Hora de Entrada", value=datetime.now().time())
             
-        # --- CAMPO DE ASSINATURA REMOVIDO DAQUI ---
-        
         submitted = st.form_submit_button("Registrar ordem de serviço", use_container_width=True, type='primary')
 
         if submitted:
@@ -55,7 +54,6 @@ def render():
                         
                         numero_os = gerar_proximo_numero_os(con, "os_externa")
                         
-                        # --- CAMPO DE ASSINATURA REMOVIDO DA QUERY ---
                         con.execute(
                             text("""
                                 INSERT INTO os_externa (numero, secretaria, setor, data, hora, solicitante, telefone, solicitacao_cliente, categoria, patrimonio, equipamento, status, tecnico)
@@ -75,11 +73,51 @@ def render():
 
     st.markdown("---")
     st.markdown("##### Ordens de serviço externas cadastradas: ")
-    df = pd.read_sql("SELECT * FROM os_externa ORDER BY id DESC", conn)
+
+    # Inicializa o estado da página se não existir
+    if 'os_externa_page' not in st.session_state:
+        st.session_state.os_externa_page = 1
     
+    ITEMS_PER_PAGE = 15
+
+    # 1. Consulta para contar o total de registros
+    try:
+        total_items_query = text("SELECT COUNT(id) FROM os_externa")
+        with conn.connect() as con:
+            total_items = con.execute(total_items_query).scalar()
+    except Exception as e:
+        st.error(f"Não foi possível contar os registros: {e}")
+        total_items = 0
+
+    total_pages = math.ceil(total_items / ITEMS_PER_PAGE) if total_items > 0 else 1
+
+    # Garante que a página atual seja válida
+    if st.session_state.os_externa_page > total_pages:
+        st.session_state.os_externa_page = total_pages
+    if st.session_state.os_externa_page < 1:
+        st.session_state.os_externa_page = 1
+
+    # 2. Consulta para buscar apenas os dados da página atual
+    offset = (st.session_state.os_externa_page - 1) * ITEMS_PER_PAGE
+    query = text(f"SELECT * FROM os_externa ORDER BY id DESC LIMIT :limit OFFSET :offset")
+    
+    df = pd.read_sql(query, conn, params={"limit": ITEMS_PER_PAGE, "offset": offset})
+
     date_cols = ['data', 'data_finalizada', 'data_retirada']
     for col in date_cols:
         if col in df.columns:
             df[col] = pd.to_datetime(df[col], errors='coerce').dt.strftime('%d/%m/%Y')
 
     st.dataframe(df)
+
+    # 3. Controles de navegação da página
+    st.markdown(" ")
+    if total_pages > 1:
+        col_nav1, col_nav2, col_nav3 = st.columns([1, 1, 1])
+        if col_nav1.button("Anterior", key="prev_externa", disabled=(st.session_state.os_externa_page <= 1)):
+            st.session_state.os_externa_page -= 1
+            st.rerun()
+        col_nav2.write(f"**Página {st.session_state.os_externa_page} de {total_pages}**")
+        if col_nav3.button("Próxima", key="next_externa", disabled=(st.session_state.os_externa_page >= total_pages)):
+            st.session_state.os_externa_page += 1
+            st.rerun()
