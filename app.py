@@ -3,6 +3,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.exc import OperationalError
 import time
 import os
+import database  # IMPORTANTE: Importa o módulo database
 
 # --- INÍCIO DA LÓGICA DE INICIALIZAÇÃO E AUTOCORREÇÃO ---
 
@@ -68,11 +69,14 @@ def initialize_database():
 conn_engine = initialize_database()
 if conn_engine is None:
     st.stop()
+else:
+    # --- LINHA CORRIGIDA ---
+    # Atribui o engine inicializado para ser usado globalmente por todo o sistema
+    database._engine = conn_engine
 
 # --- FIM DA LÓGICA DE INICIALIZAÇÃO ---
 
 # O resto do seu código da aplicação continua aqui
-from database import get_connection
 import os_interna, os_externa, filtro, dar_baixa, dashboard
 
 st.set_page_config(layout="wide")
