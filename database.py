@@ -5,18 +5,18 @@ from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.exc import OperationalError
 from datetime import datetime
 
-DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_NAME = os.getenv("DB_NAME", "ordens_servico")
-DB_USER = os.getenv("DB_USER", "postgres")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "1234")
-
+# A variável _engine será populada exclusivamente pelo app.py após a inicialização segura.
 _engine = None
 
 def get_connection():
-    global _engine
+    """
+    Retorna o engine de banco de dados global, que DEVE ser inicializado
+    pelo script principal app.py.
+    """
     if _engine is None:
-        engine_url = f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}/{DB_NAME}"
-        _engine = create_engine(engine_url)
+        # Esta exceção garante que a aplicação pare imediatamente se a conexão
+        # não for estabelecida pelo caminho correto, evitando erros ambíguos.
+        raise RuntimeError("O engine do banco de dados não foi inicializado. O script app.py principal deve inicializar a conexão.")
     return _engine
 
 def gerar_proximo_numero_os(con, table_name):
