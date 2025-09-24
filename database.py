@@ -45,7 +45,9 @@ def init_db(engine):
                 data_finalizada TIMESTAMP WITH TIME ZONE,
                 data_retirada TIMESTAMP WITH TIME ZONE,
                 retirada_por VARCHAR(255),
-                tecnico VARCHAR(255)
+                tecnico VARCHAR(255),
+                laudo_filename VARCHAR(255),
+                laudo_pdf BYTEA
             )
             """))
 
@@ -59,7 +61,9 @@ def init_db(engine):
                 data_finalizada TIMESTAMP WITH TIME ZONE,
                 data_retirada TIMESTAMP WITH TIME ZONE,
                 retirada_por VARCHAR(255),
-                tecnico VARCHAR(255)
+                tecnico VARCHAR(255),
+                laudo_filename VARCHAR(255),
+                laudo_pdf BYTEA
             )
             """))
             session.commit()

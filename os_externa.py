@@ -3,6 +3,7 @@ import pandas as pd
 from sqlalchemy import text
 from datetime import date, datetime
 import math
+import pytz
 
 from database import get_connection, gerar_proximo_numero_os
 from config import SECRETARIAS, TECNICOS, CATEGORIAS_EXTERNA, EQUIPAMENTOS
@@ -18,7 +19,10 @@ def render():
     categorias_sorted = [CATEGORIAS_EXTERNA[0]] + sorted(CATEGORIAS_EXTERNA[1:])
     equipamentos_sorted = [EQUIPAMENTOS[0]] + sorted(EQUIPAMENTOS[1:])
 
-    with st.form("nova_os_externa", clear_on_submit=True):
+    fuso_horario_sp = pytz.timezone('America/Sao_Paulo')
+    
+    # --- CORREÇÃO APLICADA AQUI ---
+    with st.form("nova_os_externa"): # Removido o clear_on_submit=True
         col1, col2 = st.columns(2)
 
         with col1:
@@ -34,12 +38,11 @@ def render():
             telefone = st.text_input("Telefone")
             categoria = st.selectbox("Categoria do Serviço", categorias_sorted)
             equipamento = st.selectbox("Equipamento", equipamentos_sorted)
-            hora = st.time_input("Hora de Entrada", value=datetime.now().time())
+            hora = st.time_input("Hora de Entrada", value=datetime.now(fuso_horario_sp).time())
             
         submitted = st.form_submit_button("Registrar ordem de serviço", use_container_width=True, type='primary')
 
         if submitted:
-            # Validações
             if not all([setor, solicitante, telefone, solicitacao_cliente]):
                 st.error("Por favor, preencha todos os campos de texto (Setor, Solicitante, Telefone, Solicitação).")
                 return
@@ -74,13 +77,11 @@ def render():
     st.markdown("---")
     st.markdown("##### Ordens de serviço externas cadastradas: ")
 
-    # Inicializa o estado da página se não existir
     if 'os_externa_page' not in st.session_state:
         st.session_state.os_externa_page = 1
     
     ITEMS_PER_PAGE = 15
 
-    # 1. Consulta para contar o total de registros
     try:
         total_items_query = text("SELECT COUNT(id) FROM os_externa")
         with conn.connect() as con:
@@ -91,13 +92,11 @@ def render():
 
     total_pages = math.ceil(total_items / ITEMS_PER_PAGE) if total_items > 0 else 1
 
-    # Garante que a página atual seja válida
     if st.session_state.os_externa_page > total_pages:
         st.session_state.os_externa_page = total_pages
     if st.session_state.os_externa_page < 1:
         st.session_state.os_externa_page = 1
 
-    # 2. Consulta para buscar apenas os dados da página atual
     offset = (st.session_state.os_externa_page - 1) * ITEMS_PER_PAGE
     query = text(f"SELECT * FROM os_externa ORDER BY id DESC LIMIT :limit OFFSET :offset")
     
@@ -108,9 +107,11 @@ def render():
         if col in df.columns:
             df[col] = pd.to_datetime(df[col], errors='coerce').dt.strftime('%d/%m/%Y')
 
+    if 'hora' in df.columns:
+        df['hora'] = pd.to_datetime(df['hora'].astype(str), errors='coerce').dt.strftime('%H:%M:%S')
+
     st.dataframe(df)
 
-    # 3. Controles de navegação da página
     st.markdown(" ")
     if total_pages > 1:
         col_nav1, col_nav2, col_nav3 = st.columns([1, 1, 1])

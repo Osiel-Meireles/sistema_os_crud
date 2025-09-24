@@ -12,7 +12,7 @@ import math
 
 def display_os_details(os_data):
     """
-    Exibe os detalhes de uma OS, mostrando informações de entrega apenas se o status for apropriado.
+    Exibe os detalhes de uma OS, mostrando informações de entrega e laudo, se apropriado.
     """
     st.markdown(f"#### Detalhes Completos da OS: {os_data.get('numero', 'N/A')}")
 
@@ -29,12 +29,19 @@ def display_os_details(os_data):
     for col, label in col_map.items():
         if col in os_data and pd.notna(os_data[col]):
             value = os_data[col]
-            # Formatação para data de entrada
             if col == 'data' and value:
                 try: value = pd.to_datetime(value).strftime('%d/%m/%Y')
                 except (ValueError, TypeError): pass
+
+            # --- CORREÇÃO DA HORA APLICADA AQUI ---
+            if col == 'hora' and value:
+                try:
+                    # Tenta converter para datetime e formatar apenas a hora
+                    value = pd.to_datetime(str(value)).strftime('%H:%M:%S')
+                except (ValueError, TypeError):
+                    pass # Mantém o valor original se a formatação falhar
+            # --- FIM DA CORREÇÃO ---
             
-            # Formatação para datas com hora (finalização e retirada)
             if col in ['data_finalizada', 'data_retirada'] and value:
                 try:
                     value = pd.to_datetime(value, utc=True).tz_convert('America/Sao_Paulo').strftime('%d/%m/%Y %H:%M:%S')
@@ -57,6 +64,20 @@ def display_os_details(os_data):
         retirada_por = os_data.get('retirada_por')
         if pd.notna(retirada_por):
             st.write(f"**Nome do recebedor:** {retirada_por}")
+
+    if os_data.get('laudo_pdf') is not None and len(os_data.get('laudo_pdf')) > 0:
+        st.markdown("---")
+        st.markdown("#### Laudo Técnico")
+        
+        pdf_data = bytes(os_data['laudo_pdf']) if isinstance(os_data['laudo_pdf'], memoryview) else os_data['laudo_pdf']
+        
+        st.download_button(
+            label=f"Baixar Laudo ({os_data.get('laudo_filename')})",
+            data=pdf_data,
+            file_name=os_data.get('laudo_filename'),
+            mime="application/pdf"
+        )
+
 
 def render():
     st.markdown("<h3 style='text-align: left;'>Filtrar Ordens de Serviço</h3>", unsafe_allow_html=True)
@@ -164,13 +185,10 @@ def render():
         end_idx = start_idx + ITEMS_PER_PAGE
         df_paginated = df_display.iloc[start_idx:end_idx].copy()
 
-        # Formatação das colunas de data
         if 'data' in df_paginated.columns:
             df_paginated['data'] = pd.to_datetime(df_paginated['data'], errors='coerce').dt.strftime('%d/%m/%Y')
-        
         if 'data_finalizada' in df_paginated.columns:
             df_paginated['data_finalizada'] = pd.to_datetime(df_paginated['data_finalizada'], utc=True, errors='coerce').dt.tz_convert('America/Sao_Paulo').dt.strftime('%d/%m/%Y %H:%M:%S')
-
         if 'data_retirada' in df_paginated.columns:
             df_paginated['data_retirada'] = pd.to_datetime(df_paginated['data_retirada'], utc=True, errors='coerce').dt.tz_convert('America/Sao_Paulo').dt.strftime('%d/%m/%Y %H:%M:%S')
 
@@ -182,8 +200,9 @@ def render():
 
         for index, row in df_paginated.iterrows():
             cols_row = st.columns((0.7, 1.5, 1.5, 2, 2.5, 2.5, 1.5, 2.5))
-            if cols_row[0].button("👁️", key=f"detail_{index}", help="Ver detalhes da OS"):
-                st.session_state.selected_os_index = index if st.session_state.selected_os_index != index else None
+            global_index = start_idx + index
+            if cols_row[0].button("👁️", key=f"detail_{global_index}", help="Ver detalhes da OS"):
+                st.session_state.selected_os_index = global_index if st.session_state.selected_os_index != global_index else None
                 st.rerun()
             cols_row[1].write(row.get("numero", "N/A"))
             cols_row[2].write(row.get("tipo", "N/A"))
@@ -193,10 +212,10 @@ def render():
             cols_row[6].write(row.get("data", "N/A"))
             cols_row[7].write(row.get("data_finalizada", ""))
             
-            if st.session_state.selected_os_index == index:
+            if st.session_state.selected_os_index == global_index:
                 with st.expander(" ", expanded=True):
-                    display_os_details(st.session_state.df_filtrado.iloc[index])
-                    if st.button("Fechar Detalhes", key=f"close_{index}", use_container_width=True):
+                    display_os_details(st.session_state.df_filtrado.iloc[global_index])
+                    if st.button("Fechar Detalhes", key=f"close_{global_index}", use_container_width=True):
                         st.session_state.selected_os_index = None
                         st.rerun()
             st.markdown("<hr style='margin-top: 0; margin-bottom: 0;'>", unsafe_allow_html=True)

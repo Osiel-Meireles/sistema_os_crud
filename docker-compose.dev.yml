@@ -14,8 +14,12 @@ services:
     volumes:
       - .:/app
     depends_on:
-      - db-dev
-    command: sh -c "sleep 10 && python setup.py && streamlit run app.py --server.port 8501 --server.enableCORS false --server.enableXsrfProtection false"
+      db-dev:
+        # Garante que a aplicação só inicie após o banco de dados
+        # estar 100% pronto para aceitar conexões.
+        condition: service_healthy
+    # COMANDO CORRIGIDO: Remove a chamada ao "sleep" e ao "setup.py"
+    command: streamlit run app.py --server.port 8501 --server.enableCORS false --server.enableXsrfProtection false
 
   db-dev:
     image: postgres:13
@@ -28,6 +32,12 @@ services:
       - postgres_data_dev:/var/lib/postgresql/data/
     ports:
       - "5433:5432"
+    # Adiciona a verificação de saúde para estabilidade
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ordens_servico_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
 volumes:
   postgres_data_dev:
