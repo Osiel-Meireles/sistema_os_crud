@@ -36,8 +36,27 @@ const equipamentos = [
   'NOTEBOOK', 'PERIFÉRICO', 'TABLET', 'TRANSFORMADOR', 'ROTEADOR', 'SISTEMA', 'SOFTWARE'
 ]
 
+// Função para formatar telefone
+const formatPhone = (value: string) => {
+  const numbers = value.replace(/\D/g, '')
+  if (numbers.length <= 10) {
+    return numbers.replace(/(\d{2})(\d{4})(\d{4})/, '($1) $2-$3')
+  }
+  return numbers.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3')
+}
+
+// Função para validar telefone
+const validatePhone = (value: string) => {
+  const numbers = value.replace(/\D/g, '')
+  if (numbers.length === 10 || numbers.length === 11) {
+    return true
+  }
+  return 'Telefone deve ter 10 ou 11 dígitos'
+}
 export default function OSExterna() {
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [phoneValue, setPhoneValue] = useState('')
+  
   const { register, handleSubmit, reset, formState: { errors } } = useForm<OSExternaForm>({
     defaultValues: {
       data: new Date().toISOString().split('T')[0],
@@ -45,7 +64,30 @@ export default function OSExterna() {
     }
   })
 
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const formatted = formatPhone(e.target.value)
+    setPhoneValue(formatted)
+    e.target.value = formatted
+  }
   const onSubmit = async (data: OSExternaForm) => {
+    // Validar se todos os campos obrigatórios estão preenchidos
+    if (!data.secretaria || data.secretaria === '') {
+      alert('Por favor, selecione uma secretaria.')
+      return
+    }
+    if (!data.categoria || data.categoria === '') {
+      alert('Por favor, selecione uma categoria.')
+      return
+    }
+    if (!data.equipamento || data.equipamento === '') {
+      alert('Por favor, selecione um equipamento.')
+      return
+    }
+    if (!data.tecnico || data.tecnico === '') {
+      alert('Por favor, selecione um técnico.')
+      return
+    }
+
     setIsSubmitting(true)
     try {
       // Aqui será feita a chamada para a API
@@ -55,6 +97,7 @@ export default function OSExterna() {
       await new Promise(resolve => setTimeout(resolve, 1000))
       
       alert('OS Externa registrada com sucesso!')
+      setPhoneValue('')
       reset({
         data: new Date().toISOString().split('T')[0],
         hora: new Date().toTimeString().slice(0, 5),
@@ -141,9 +184,15 @@ export default function OSExterna() {
                 </label>
                 <input
                   type="tel"
-                  {...register('telefone', { required: 'Telefone é obrigatório' })}
+                  {...register('telefone', { 
+                    required: 'Telefone é obrigatório',
+                    validate: validatePhone
+                  })}
                   className="input"
                   placeholder="(00) 00000-0000"
+                  value={phoneValue}
+                  onChange={handlePhoneChange}
+                  maxLength={15}
                 />
                 {errors.telefone && (
                   <p className="mt-1 text-sm text-red-600">{errors.telefone.message}</p>
@@ -271,7 +320,10 @@ export default function OSExterna() {
             <div className="flex justify-end space-x-4">
               <button
                 type="button"
-                onClick={() => reset()}
+                onClick={() => {
+                  reset()
+                  setPhoneValue('')
+                }}
                 className="btn btn-outline"
                 disabled={isSubmitting}
               >
