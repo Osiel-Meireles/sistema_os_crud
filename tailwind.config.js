@@ -30,7 +30,11 @@ export default {
           700: '#334155',
           800: '#1e293b',
           900: '#0f172a',
-        }
+        },
+        border: '#e2e8f0',
+        background: '#ffffff',
+        foreground: '#0f172a',
+        ring: '#3b82f6'
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
