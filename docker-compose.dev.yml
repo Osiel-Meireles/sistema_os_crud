@@ -34,7 +34,9 @@ services:
       - "5433:5432"
     # Adiciona a verificação de saúde para estabilidade
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d ordens_servico_dev"]
+      # --- CORREÇÃO APLICADA AQUI ---
+      # Verifica apenas se o serviço do PostgreSQL está pronto.
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 5s
       retries: 5
