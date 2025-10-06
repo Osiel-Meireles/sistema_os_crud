@@ -161,6 +161,9 @@ def render():
                     df_externa = pd.read_sql(text(query_externa), con, params=params)
                     df_final = pd.concat([df_final, df_externa])
                 
+                if not df_final.empty:
+                    df_final = df_final.sort_values(by="id", ascending=False)
+
                 st.session_state.df_filtrado = df_final.reset_index(drop=True)
                 st.session_state.current_page = 1
                 st.session_state.selected_os_index = None
