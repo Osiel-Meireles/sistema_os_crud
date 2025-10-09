@@ -32,7 +32,8 @@ services:
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d ordens_servico"]
+      # CORREÇÃO: Verifica o banco de dados 'postgres' que sempre existe por padrão.
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
       interval: 5s
       timeout: 5s
       retries: 5
