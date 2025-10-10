@@ -16,61 +16,63 @@ DB_PASSWORD = os.getenv("DB_PASSWORD", "1234")
 @st.cache_resource(show_spinner="Conectando e configurando o banco de dados...")
 def initialize_database():
     """
-    Garante que o banco de dados e as tabelas existam.
-    Isso roda apenas uma vez graças ao @st.cache_resource.
+    Garante que o banco de dados e as tabelas existam, com múltiplas tentativas
+    para evitar problemas de inicialização com o Docker.
     """
-    try:
-        # 1. Conecta ao servidor PostgreSQL (sem especificar um banco)
-        default_engine_url = f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}/postgres"
-        engine = create_engine(default_engine_url)
-        
-        # Tenta conectar ao servidor por até 50 segundos
-        retries = 10
-        for i in range(retries):
-            try:
-                with engine.connect() as connection:
-                    print("Conexão com o servidor PostgreSQL estabelecida.")
-                    
-                    # 2. Verifica se o banco de dados 'ordens_servico' existe
-                    result = connection.execute(text(f"SELECT 1 FROM pg_database WHERE datname = '{DB_NAME}'"))
-                    db_exists = result.scalar() == 1
-                    
-                    if not db_exists:
-                        print(f"O banco de dados '{DB_NAME}' não existe. Criando...")
-                        # CORREÇÃO: Finaliza a transação atual antes de criar o banco
-                        connection.commit() 
-                        # Define o nível de isolamento para AUTOCOMMIT
-                        connection.execution_options(isolation_level="AUTOCOMMIT").execute(text(f'CREATE DATABASE "{DB_NAME}"'))
-                        print(f"Banco de dados '{DB_NAME}' criado com sucesso.")
-                    else:
-                        print(f"O banco de dados '{DB_NAME}' já existe.")
-                    
-                    # 3. Agora conecta ao banco 'ordens_servico' e cria as tabelas
-                    db_engine_url = f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}/{DB_NAME}"
-                    db_engine = create_engine(db_engine_url)
-                    from database import init_db
-                    init_db(db_engine) # Passa o engine para a função
-                    print("Tabelas verificadas/criadas com sucesso.")
-                    
-                    return db_engine # Retorna o engine da conexão para ser usado pela aplicação
+    retries = 10
+    for i in range(retries):
+        try:
+            # 1. Conecta ao servidor PostgreSQL (usando o banco de dados 'postgres' padrão)
+            default_engine_url = f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}/postgres"
+            engine = create_engine(default_engine_url)
             
-            except OperationalError:
-                print(f"Servidor PostgreSQL ainda não está pronto... Tentativa {i+1}/{retries}")
-                time.sleep(5)
-        
-        st.error("Não foi possível conectar ao servidor PostgreSQL após múltiplas tentativas.")
-        return None
+            with engine.connect() as connection:
+                print("Conexão com o servidor PostgreSQL estabelecida.")
+                
+                # 2. Verifica se o banco de dados da aplicação existe
+                result = connection.execute(text(f"SELECT 1 FROM pg_database WHERE datname = '{DB_NAME}'"))
+                db_exists = result.scalar() == 1
+                
+                if not db_exists:
+                    print(f"O banco de dados '{DB_NAME}' não existe. Criando...")
+                    connection.commit() 
+                    connection.execution_options(isolation_level="AUTOCOMMIT").execute(text(f'CREATE DATABASE "{DB_NAME}"'))
+                    print(f"Banco de dados '{DB_NAME}' criado com sucesso.")
+                    # Pausa para garantir que o SGBD processe a criação do banco antes da próxima etapa
+                    time.sleep(2) 
+                else:
+                    print(f"O banco de dados '{DB_NAME}' já existe.")
 
-    except Exception as e:
-        st.error(f"Ocorreu um erro inesperado ao inicializar o banco de dados: {e}")
-        return None
+            # 3. Tenta conectar ao banco de dados da aplicação.
+            # Esta é a verificação crucial para resolver a condição de corrida.
+            db_engine_url = f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}/{DB_NAME}"
+            db_engine = create_engine(db_engine_url)
+
+            with db_engine.connect() as db_connection:
+                print(f"Conexão final com o banco '{DB_NAME}' bem-sucedida.")
+                # Se a conexão foi um sucesso, inicializa as tabelas.
+                from database import init_db
+                init_db(db_engine)
+                print("Tabelas verificadas/criadas com sucesso.")
+                return db_engine # Retorna o engine pronto para uso e encerra a função.
+
+        except OperationalError:
+            print(f"Servidor ou banco de dados ainda não está pronto... Tentativa {i+1}/{retries}")
+            if i < retries - 1:
+                time.sleep(5) # Espera 5 segundos antes de tentar novamente
+            else:
+                st.error("Não foi possível conectar ao banco de dados após múltiplas tentativas.")
+                return None
+    
+    # Se o loop terminar sem sucesso (improvável, mas seguro)
+    st.error("Falha ao inicializar a conexão com o banco de dados.")
+    return None
 
 # Executa a inicialização. Se falhar, a aplicação para aqui.
 conn_engine = initialize_database()
 if conn_engine is None:
     st.stop()
 else:
-    # --- LINHA CORRIGIDA ---
     # Atribui o engine inicializado para ser usado globalmente por todo o sistema
     database._engine = conn_engine
 
@@ -85,8 +87,6 @@ st.markdown("<h2 style='text-align: left;'>Sistema de Registro de Ordens de Serv
 
 if 'page' not in st.session_state:
     st.session_state.page = "Home"
-
-# ... (o resto do seu código de UI de app.py permanece o mesmo) ...
 
 st.sidebar.markdown("<h3 style='text-align: left;'>Navegação</h3>", unsafe_allow_html=True)
 if st.sidebar.button("Tela Inicial", use_container_width=True): st.session_state.page = "Home"
