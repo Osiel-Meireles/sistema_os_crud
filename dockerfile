@@ -11,4 +11,4 @@ COPY . .
 EXPOSE 8501
 
 # Comando corrigido: inicia a aplicação diretamente
-CMD ["streamlit", "run", "app.py", "--server.port=8501", "--server.enableCORS=false", "--server.enableXsrfProtection=false"]
+CMD ["./wait-for-db.sh", "streamlit", "run", "app.py", "--server.port=8501", "--server.enableCORS=false", "--server.enableXsrfProtection=false"]
