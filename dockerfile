@@ -1,23 +1,19 @@
-FROM debian:bookworm-slim
+FROM python:3.10-slim
 
-RUN apt-get update && apt-get install -y postgresql-client cron
+# Instala o cliente do PostgreSQL
+RUN apt-get update && apt-get install -y postgresql-client
 
-# Cria o diretório da aplicação
 WORKDIR /app
 
-# Copia o novo entrypoint, o script de backup e o arquivo do cron
-COPY entrypoint.sh .
-COPY backup.sh .
-COPY crontab.txt /etc/cron.d/backup-cron
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Dá as permissões corretas para os arquivos
-RUN chmod +x /app/entrypoint.sh
-RUN chmod +x /app/backup.sh
-RUN chmod 0644 /etc/cron.d/backup-cron
-RUN crontab /etc/cron.d/backup-cron
+COPY . .
 
-# Cria um arquivo de log para o cron
-RUN touch /var/log/cron.log
+EXPOSE 8501
 
-# Define o entrypoint como o comando principal do contêiner
-ENTRYPOINT ["/app/entrypoint.sh"]
+# Dá permissão de execução para o script de espera
+RUN chmod +x ./wait-for-db.sh
+
+# Comando corrigido: inicia a aplicação diretamente
+CMD ["./wait-for-db.sh", "streamlit", "run", "app.py", "--server.port=8501", "--server.enableCORS=false", "--server.enableXsrfProtection=false"]
