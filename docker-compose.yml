@@ -1,4 +1,3 @@
-# A 'version' não é mais necessária e foi removida.
 services:
   app:
     build: .
@@ -23,13 +22,14 @@ services:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=1234
       - TZ=America/Sao_Paulo
+      - PGDATA=/var/lib/postgresql/data/pgdata  # ADICIONAR ESTA LINHA
     volumes:
-      - postgres_data:/var/lib/postgresql/data/
+      - postgres_data:/var/lib/postgresql/data  # REMOVER BARRA FINAL
     ports:
       - "5432:5432"
     healthcheck:
-      # --- HEALTHCHECK CORRIGIDO E SIMPLIFICADO ---
-      test: ["CMD-SHELL", "pg_isready -U postgres -d ordens_servico"]
+      # Verificar o servidor postgres (não o banco específico ainda)
+      test: ["CMD-SHELL", "pg_isready -U postgres || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
