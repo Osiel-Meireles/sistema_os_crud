@@ -1,4 +1,3 @@
-
 #!/bin/bash
 
 # Define as variáveis de conexão com o banco de dados
@@ -9,6 +8,9 @@ DB_NAME=${DB_NAME}
 
 # Define o diretório de backup dentro do contêiner
 BACKUP_DIR="/backups"
+# Garante que o diretório de backup exista
+mkdir -p $BACKUP_DIR
+
 # Define o formato do nome do arquivo de backup com data e hora
 DATE_FORMAT=$(date "+%Y-%m-%d_%H-%M-%S")
 BACKUP_FILE="${BACKUP_DIR}/backup_${DATE_FORMAT}.sql.gz"
