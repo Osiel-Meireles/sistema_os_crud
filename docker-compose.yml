@@ -20,7 +20,7 @@ services:
     environment:
       - POSTGRES_DB=ordens_servico
       - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=1234
+      - POSTGRES_PASSWORD=P0IsA6RZPvtLVKnd2+ifP1ruWFWj9+D90jDOw6PuqZ0=
       - TZ=America/Sao_Paulo
       - PGDATA=/var/lib/postgresql/data/pgdata  # ADICIONAR ESTA LINHA
     volumes:
