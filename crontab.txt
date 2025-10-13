@@ -1,4 +1,4 @@
-# Executa o script de backup todos os dias às 2 da manhã
-0 2 * * * /bin/bash -c ". /app/.env.sh && /app/backup.sh" >> /var/log/cron.log 2>&1
+# Executa o script de backup às 11:15 (TESTE)
+15 11 * * * /bin/bash -c ". /app/.env.sh && /app/backup.sh" >> /var/log/cron.log 2>&1
 
 # Uma linha em branco no final é necessária para o cron
