@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   app:
     build: .
@@ -8,11 +10,13 @@ services:
       - DB_HOST=db
       - DB_NAME=ordens_servico
       - DB_USER=postgres
-      - DB_PASSWORD=1234
+      - DB_PASSWORD=P0IsA6RZPvtLVKnd2+ifP1ruWFWj9+D90jDOw6PuqZ0=
       - TZ=America/Sao_Paulo
     depends_on:
       db:
         condition: service_healthy
+    command: >
+      sh -c "./wait-for-db.sh && streamlit run app.py --server.port=8501 --server.address=0.0.0.0"
 
   db:
     image: postgres:13
@@ -22,13 +26,11 @@ services:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=P0IsA6RZPvtLVKnd2+ifP1ruWFWj9+D90jDOw6PuqZ0=
       - TZ=America/Sao_Paulo
-      - PGDATA=/var/lib/postgresql/data/pgdata  # ADICIONAR ESTA LINHA
+      - PGDATA=/var/lib/postgresql/data/pgdata
     volumes:
-      - postgres_data:/var/lib/postgresql/data  # REMOVER BARRA FINAL
-    ports:
-      - "5432:5432"
+      - postgres_data:/var/lib/postgresql/data
+    # PORTA REMOVIDA - PostgreSQL não será mais exposto publicamente
     healthcheck:
-      # Verificar o servidor postgres (não o banco específico ainda)
       test: ["CMD-SHELL", "pg_isready -U postgres || exit 1"]
       interval: 10s
       timeout: 5s
@@ -43,13 +45,12 @@ services:
       - DB_HOST=db
       - DB_NAME=ordens_servico
       - DB_USER=postgres
-      - DB_PASSWORD=1234
+      - DB_PASSWORD=P0IsA6RZPvtLVKnd2+ifP1ruWFWj9+D90jDOw6PuqZ0=
       - TZ=America/Sao_Paulo
     volumes:
       - ./backups:/backups
     depends_on:
-      db:
-        condition: service_healthy
+      - db
 
 volumes:
   postgres_data:
