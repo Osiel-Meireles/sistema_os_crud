@@ -16,7 +16,7 @@ DB_PASSWORD = os.getenv("DB_PASSWORD", "1234")
 # ===============================
 # CONEXÃO RESILIENTE AO BANCO
 # ===============================
-@st.cache_resource(show_spinner="Conectando e configurando o banco de dados...")
+@st.cache_resource(show_spinner="Conectando e configurando o banco de dados...", ttl=300)
 def initialize_database():
     """
     Garante que o banco de dados exista e cria o engine resiliente,
@@ -27,7 +27,13 @@ def initialize_database():
         try:
             # 1️⃣ Tenta conectar ao banco principal (assumindo que o wait-for-db.sh já o criou)
             db_engine_url = f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}/{DB_NAME}"
-            db_engine = create_engine(db_engine_url, pool_pre_ping=True)
+            db_engine = create_engine(
+                db_engine_url,
+                pool_pre_ping=True,
+                pool_size=10,
+                max_overflow=20,
+                pool_recycle=3600
+            )
 
             # 2️⃣ Testa a conexão
             with db_engine.connect() as connection:
@@ -45,7 +51,7 @@ def initialize_database():
             if i < retries - 1:
                 time.sleep(5)
             else:
-                st.error("❌ Não foi possível conectar ao banco de dados após múltiplas tentativas.")
+                st.error(f"❌ Não foi possível conectar ao banco de dados após múltiplas tentativas: {e}")
                 return None
 
     st.error("❌ Falha ao inicializar a conexão com o banco de dados.")
@@ -54,6 +60,7 @@ def initialize_database():
 # Inicializa a conexão com o banco
 conn_engine = initialize_database()
 if conn_engine is None:
+    st.error("🔴 Sistema indisponível. Por favor, contate o administrador.")
     st.stop()
 else:
     database._engine = conn_engine
@@ -111,4 +118,3 @@ elif st.session_state.page == "Filtrar OS":
     filtro.render()
 elif st.session_state.page == "Dar Baixa em OS": 
     dar_baixa.render()
-
