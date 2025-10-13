@@ -10,12 +10,11 @@ services:
       - DB_HOST=db
       - DB_NAME=ordens_servico
       - DB_USER=postgres
-      - DB_PASSWORD=1234
+      # --- SENHA ALTERADA ---
+      - DB_PASSWORD=postgres
       - TZ=America/Sao_Paulo
     depends_on:
       db:
-        # Garante que a aplicação só inicie após o banco de dados
-        # estar 100% pronto para aceitar conexões.
         condition: service_healthy
 
   db:
@@ -24,16 +23,16 @@ services:
     environment:
       - POSTGRES_DB=ordens_servico
       - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=1234
+      # --- SENHA ALTERADA ---
+      - POSTGRES_PASSWORD=postgres
       - TZ=America/Sao_Paulo
     volumes:
-      # Volume persistente para os dados do banco de dados
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     healthcheck:
-      # CORREÇÃO: Verifica o banco de dados 'postgres' que sempre existe por padrão.
-      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      # --- HEALTHCHECK CORRIGIDO ---
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ordens_servico"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -47,10 +46,10 @@ services:
       - DB_HOST=db
       - DB_NAME=ordens_servico
       - DB_USER=postgres
-      - DB_PASSWORD=1234
+      # --- SENHA ALTERADA ---
+      - DB_PASSWORD=postgres
       - TZ=America/Sao_Paulo
     volumes:
-      # Mapeia a pasta /backups do container para a pasta local ./backups
       - ./backups:/backups
     depends_on:
       db:
