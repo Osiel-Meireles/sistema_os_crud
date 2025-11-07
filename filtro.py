@@ -1,18 +1,23 @@
+# CÓDIGO ATUALIZADO PARA: sistema_os_crud-main/filtro.py
+
 import streamlit as st
 import pandas as pd
 from database import get_connection
 from sqlalchemy import text
 from config import (
     SECRETARIAS, TECNICOS, STATUS_OPTIONS, EQUIPAMENTOS,
-    CATEGORIAS_INTERNA, CATEGORIAS_EXTERNA
+    CATEGORIAS
 )
 from import_export import exportar_filtrados_para_excel
 import base64
 import math
+import pytz 
+from datetime import datetime
 
 def display_os_details(os_data):
     """
-    Exibe os detalhes de uma OS, mostrando informações de entrega e laudo, se apropriado.
+    Exibe os detalhes de uma OS, mostrando informações de entrega e laudo PDF (o anexo).
+    Esta função é chamada DE DENTRO do novo modal.
     """
     st.markdown(f"#### Detalhes Completos da OS: {os_data.get('numero', 'N/A')}")
 
@@ -33,14 +38,11 @@ def display_os_details(os_data):
                 try: value = pd.to_datetime(value).strftime('%d/%m/%Y')
                 except (ValueError, TypeError): pass
 
-            # --- CORREÇÃO DA HORA APLICADA AQUI ---
             if col == 'hora' and value:
                 try:
-                    # Tenta converter para datetime e formatar apenas a hora
                     value = pd.to_datetime(str(value)).strftime('%H:%M:%S')
                 except (ValueError, TypeError):
-                    pass # Mantém o valor original se a formatação falhar
-            # --- FIM DA CORREÇÃO ---
+                    pass 
             
             if col in ['data_finalizada', 'data_retirada'] and value:
                 try:
@@ -65,35 +67,102 @@ def display_os_details(os_data):
         if pd.notna(retirada_por):
             st.write(f"**Nome do recebedor:** {retirada_por}")
 
+    # Exibe o Laudo PDF (anexo na OS) se existir
     if os_data.get('laudo_pdf') is not None and len(os_data.get('laudo_pdf')) > 0:
         st.markdown("---")
-        st.markdown("#### Laudo Técnico")
+        st.markdown("#### Laudo Técnico (Anexo PDF)")
         
         pdf_data = bytes(os_data['laudo_pdf']) if isinstance(os_data['laudo_pdf'], memoryview) else os_data['laudo_pdf']
         
         st.download_button(
-            label=f"Baixar Laudo ({os_data.get('laudo_filename')})",
+            label=f"Baixar Laudo PDF ({os_data.get('laudo_filename')})",
             data=pdf_data,
             file_name=os_data.get('laudo_filename'),
             mime="application/pdf"
         )
 
+def render_modal_detalhes_os(conn):
+    """Renderiza o modal de detalhes da OS, incluindo laudos de componentes."""
+    
+    if 'view_os_id' not in st.session_state or st.session_state.view_os_id is None:
+        return
+
+    try:
+        os_data = st.session_state.df_filtrado.iloc[st.session_state.view_os_id]
+    except IndexError:
+        st.error("Erro ao carregar dados da OS. Tente filtrar novamente.")
+        st.session_state.view_os_id = None
+        return
+    except Exception as e:
+        st.error(f"Erro inesperado: {e}")
+        st.session_state.view_os_id = None
+        return
+
+    @st.dialog("Detalhes Completos da Ordem de Serviço", dismissible=False)
+    def show_modal():
+        display_os_details(os_data)
+
+        st.markdown("---")
+        st.markdown("#### Laudos de Componentes Associados")
+        
+        tipo_os_laudo = f"OS {os_data.get('tipo')}"
+        numero_os = os_data.get('numero')
+        
+        laudos_registrados = []
+        try:
+            query_laudos = text("SELECT * FROM laudos WHERE numero_os = :num AND tipo_os = :tipo ORDER BY id DESC")
+            with conn.connect() as con:
+                results = con.execute(query_laudos, {"num": numero_os, "tipo": tipo_os_laudo}).fetchall()
+                laudos_registrados = [r._mapping for r in results]
+        except Exception as e:
+            st.error(f"Erro ao buscar laudos de componentes: {e}")
+
+        if not laudos_registrados:
+            st.info("Nenhum laudo de componente registrado para esta OS.")
+        else:
+            fuso_sp = pytz.timezone('America/Sao_Paulo')
+            for laudo in laudos_registrados:
+                data_reg = laudo['data_registro'].astimezone(fuso_sp).strftime('%d/%m/%Y %H:%M')
+                with st.expander(f"Laudo ID {laudo['id']} - {laudo['componente']} ({laudo['status']}) - {data_reg}"):
+                    st.markdown(f"**Técnico:** {laudo['tecnico']}")
+                    st.markdown(f"**Status:** {laudo['status']}")
+                    st.markdown("**Especificação:**")
+                    st.text_area(f"spec_{laudo['id']}", laudo['especificacao'], height=100, disabled=True, label_visibility="collapsed")
+                    if laudo['link_compra']:
+                        st.markdown(f"**Link:** [Link de Compra]({laudo['link_compra']})")
+                    if laudo['observacoes']:
+                        st.markdown("**Observações:**")
+                        st.text_area(f"obs_{laudo['id']}", laudo['observacoes'], height=80, disabled=True, label_visibility="collapsed")
+
+        st.markdown("---")
+        if st.button("Fechar Detalhes", use_container_width=True, key="close_modal_filter"):
+            st.session_state.view_os_id = None
+            st.rerun()
+
+    show_modal()
+
 
 def render():
     st.markdown("<h3 style='text-align: left;'>Filtrar Ordens de Serviço</h3>", unsafe_allow_html=True)
-    categorias_combinadas = sorted(list(set(CATEGORIAS_INTERNA[1:] + CATEGORIAS_EXTERNA[1:])))
-    secretarias_filtro = ["Todas"] + sorted(SECRETARIAS[1:])
-    tecnicos_filtro = ["Todos"] + sorted(TECNICOS[1:])
-    equipamentos_filtro = ["Todos"] + sorted(EQUIPAMENTOS[1:])
+    
+    # --- ALTERAÇÃO AQUI: Lógica de lista simplificada ---
+    categorias_combinadas = sorted(CATEGORIAS)
+    secretarias_filtro = ["Todas"] + sorted(SECRETARIAS)
+    tecnicos_filtro = ["Todos"] + sorted(TECNICOS)
+    equipamentos_filtro = ["Todos"] + sorted(EQUIPAMENTOS)
     categorias_filtro = ["Todas"] + categorias_combinadas
+    # --- FIM DA ALTERAÇÃO ---
+    
+    conn = get_connection() 
 
     if 'df_filtrado' not in st.session_state:
         st.session_state.df_filtrado = pd.DataFrame()
     
     if 'current_page' not in st.session_state:
         st.session_state.current_page = 1
-    if 'selected_os_index' not in st.session_state:
-        st.session_state.selected_os_index = None
+        
+    if 'view_os_id' not in st.session_state:
+        st.session_state.view_os_id = None
 
     with st.form("filtro_os"):
         st.markdown("#### Preencha os campos para buscar")
@@ -102,7 +171,7 @@ def render():
             tipo_os = st.selectbox("Tipo de OS", ["Ambas", "OS Interna", "OS Externa"])
             data_inicio = st.date_input("Data de Início", value=None)
         with col2:
-            status = st.selectbox("Status", STATUS_OPTIONS)
+            status = st.selectbox("Status", STATUS_OPTIONS) # Esta lista já tem "Todos"
             data_fim = st.date_input("Data de Fim", value=None)
         with col3:
             secretaria = st.selectbox("Secretaria", secretarias_filtro)
@@ -116,11 +185,11 @@ def render():
         submitted = st.form_submit_button("Filtrar", type="primary")
 
     if submitted:
-        conn = get_connection()
         try:
             with conn.connect() as con:
                 params = {}
                 where_clauses = []
+                # ... (lógica de filtro permanece a mesma) ...
                 if numero_os:
                     where_clauses.append("numero ILIKE :numero_os")
                     params["numero_os"] = f"%{numero_os}%"
@@ -149,7 +218,9 @@ def render():
                 
                 where_string = ""
                 if where_clauses: where_string = " WHERE " + " AND ".join(where_clauses)
+                
                 base_query = " SELECT *, '{}' as tipo FROM {} "
+                
                 df_final = pd.DataFrame()
                 
                 if tipo_os == "OS Interna" or tipo_os == "Ambas":
@@ -162,11 +233,16 @@ def render():
                     df_final = pd.concat([df_final, df_externa])
                 
                 if not df_final.empty:
+                    if 'laudo_pdf' not in df_final.columns:
+                        df_final['laudo_pdf'] = None
+                    if 'laudo_filename' not in df_final.columns:
+                        df_final['laudo_filename'] = None
+                        
                     df_final = df_final.sort_values(by="id", ascending=False)
 
                 st.session_state.df_filtrado = df_final.reset_index(drop=True)
                 st.session_state.current_page = 1
-                st.session_state.selected_os_index = None
+                st.session_state.view_os_id = None 
         except Exception as e:
             st.error(f"Ocorreu um erro ao executar a consulta: {e}")
             st.session_state.df_filtrado = pd.DataFrame()
@@ -203,10 +279,13 @@ def render():
 
         for index, row in df_paginated.iterrows():
             cols_row = st.columns((0.7, 1.5, 1.5, 2, 2.5, 2.5, 1.5, 2.5))
-            global_index = start_idx + index
+            
+            global_index = index 
+            
             if cols_row[0].button("👁️", key=f"detail_{global_index}", help="Ver detalhes da OS"):
-                st.session_state.selected_os_index = global_index if st.session_state.selected_os_index != global_index else None
+                st.session_state.view_os_id = global_index
                 st.rerun()
+                
             cols_row[1].write(row.get("numero", "N/A"))
             cols_row[2].write(row.get("tipo", "N/A"))
             cols_row[3].write(row.get("status", "N/A"))
@@ -215,12 +294,6 @@ def render():
             cols_row[6].write(row.get("data", "N/A"))
             cols_row[7].write(row.get("data_finalizada", ""))
             
-            if st.session_state.selected_os_index == global_index:
-                with st.expander(" ", expanded=True):
-                    display_os_details(st.session_state.df_filtrado.iloc[global_index])
-                    if st.button("Fechar Detalhes", key=f"close_{global_index}", use_container_width=True):
-                        st.session_state.selected_os_index = None
-                        st.rerun()
             st.markdown("<hr style='margin-top: 0; margin-bottom: 0;'>", unsafe_allow_html=True)
         st.markdown(" ")
         
@@ -228,22 +301,24 @@ def render():
             col_nav1, col_nav2, col_nav3 = st.columns([1, 1, 1])
             if col_nav1.button("Anterior", disabled=(st.session_state.current_page <= 1)):
                 st.session_state.current_page -= 1
-                st.session_state.selected_os_index = None
+                st.session_state.view_os_id = None 
                 st.rerun()
             col_nav2.write(f"**Página {st.session_state.current_page} de {total_pages}**")
             if col_nav3.button("Próxima", disabled=(st.session_state.current_page >= total_pages)):
                 st.session_state.current_page += 1
-                st.session_state.selected_os_index = None
+                st.session_state.view_os_id = None 
                 st.rerun()
 
         st.markdown("---")
         col_b1, col_b2, _ = st.columns([1, 1, 4])
         if col_b1.button("Limpar Resultados"):
             st.session_state.df_filtrado = pd.DataFrame()
-            st.session_state.selected_os_index = None
+            st.session_state.view_os_id = None
             st.session_state.current_page = 1
             st.rerun()
         excel_bytes = exportar_filtrados_para_excel(st.session_state.df_filtrado)
         col_b2.download_button("Exportar para Excel", excel_bytes, "dados_filtrados.xlsx")
     elif submitted:
         st.info("Não foram encontrados dados com os filtros aplicados.")
+
+    render_modal_detalhes_os(conn)
