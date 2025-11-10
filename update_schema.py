@@ -1,4 +1,4 @@
-# CÓDIGO PARA O NOVO ARQUIVO: sistema_os_crud-main/update_schema.py
+# CÓDIGO ATUALIZADO E COMPLETO PARA: sistema_os_crud-main/update_schema.py
 
 import os
 from sqlalchemy import create_engine, text
@@ -6,15 +6,22 @@ from sqlalchemy import create_engine, text
 def migrate_schema():
     print("--- Iniciando migração de schema (Adicionando 'administrativo' role) ---")
     
-    # --- Configuração da Conexão com o Banco ---
-    # Estas variáveis devem bater com seu 'docker-compose.dev.yml'
-    DB_HOST = "localhost"
-    DB_NAME = "ordens_servico_dev" # O banco de desenvolvimento
-    DB_USER = "postgres"
-    DB_PASSWORD = "1234" # A senha do seu 'db-dev'
-    DB_PORT = "5434" # A porta do 'docker-compose.dev.yml'
-    # --- Fim da Configuração ---
-    
+    # --- ALTERAÇÃO AQUI ---
+    # Lê as variáveis de ambiente do contêiner onde o script está rodando.
+    # Removemos os defaults ("localhost", "5434", etc.) que causaram o erro.
+    DB_HOST = os.getenv("DB_HOST")
+    DB_NAME = os.getenv("DB_NAME")
+    DB_USER = os.getenv("DB_USER")
+    DB_PASSWORD = os.getenv("DB_PASSWORD")
+    DB_PORT = "5432" # Na rede interna do Docker, a porta do Postgres é sempre 5432
+
+    # Verifica se as variáveis foram carregadas
+    if not all([DB_HOST, DB_NAME, DB_USER, DB_PASSWORD]):
+        print("\n❌ ERRO: Variáveis de ambiente (DB_HOST, DB_NAME, etc.) não foram carregadas.")
+        print("Certifique-se de que o contêiner 'app' está rodando ('docker compose up -d').")
+        return
+    # --- FIM DA ALTERAÇÃO ---
+
     db_engine_url = f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
     
     try:
@@ -22,11 +29,9 @@ def migrate_schema():
         with engine.connect() as con:
             with con.begin():
                 print("1. Removendo a antiga constraint 'usuarios_role_check'...")
-                # O 'IF EXISTS' garante que o script não falhe se já foi removida
                 con.execute(text("ALTER TABLE usuarios DROP CONSTRAINT IF EXISTS usuarios_role_check;"))
                 
                 print("2. Adicionando a nova constraint 'usuarios_role_check' com 'administrativo'...")
-                # Adiciona a nova constraint atualizada
                 con.execute(text("""
                     ALTER TABLE usuarios
                     ADD CONSTRAINT usuarios_role_check
@@ -34,14 +39,9 @@ def migrate_schema():
                 """))
             
             print("\n✅ Schema atualizado com sucesso!")
-            print("A função 'administrativo' agora é permitida.")
 
     except Exception as e:
         print(f"\n❌ Falha ao migrar o schema: {e}")
-        if "already exists" in str(e):
-             print("INFO: A nova constraint já parece existir. Nenhuma ação foi tomada.")
-        else:
-            print("Verifique se o banco de dados está rodando (docker compose up -d) e se as credenciais no script estão corretas.")
 
 if __name__ == "__main__":
     migrate_schema()
