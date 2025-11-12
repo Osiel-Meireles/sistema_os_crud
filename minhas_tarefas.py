@@ -24,18 +24,20 @@ def render():
     df_os_finalizadas = pd.DataFrame()
 
     try:
-        # Query 1: Buscar OS abertas (Inalterada)
+        # --- ALTERAÇÃO AQUI: Query 1 (Abertas) ---
+        # Adicionamos setor e equipamento à consulta
         query_os = text("""
-            SELECT numero, 'Interna' as tipo, data, hora, secretaria, solicitante, solicitacao_cliente
+            SELECT numero, 'Interna' as tipo, data, hora, secretaria, setor, equipamento, solicitante, solicitacao_cliente
             FROM os_interna
             WHERE UPPER(tecnico) = UPPER(:display_name) AND status = 'EM ABERTO'
             UNION ALL
-            SELECT numero, 'Externa' as tipo, data, hora, secretaria, solicitante, solicitacao_cliente
+            SELECT numero, 'Externa' as tipo, data, hora, secretaria, setor, equipamento, solicitante, solicitacao_cliente
             FROM os_externa
             WHERE UPPER(tecnico) = UPPER(:display_name) AND status = 'EM ABERTO'
             ORDER BY data ASC, hora ASC
         """)
         df_os_abertas = pd.read_sql(query_os, conn, params={"display_name": display_name})
+        # --- FIM DA ALTERAÇÃO ---
 
         # Query 2: Buscar laudos pendentes (Inalterada)
         query_laudos = text("""
@@ -46,8 +48,7 @@ def render():
         """)
         df_laudos_pendentes = pd.read_sql(query_laudos, conn, params={"display_name": display_name})
 
-        # --- ALTERAÇÃO AQUI: Query 3 (Finalizadas) ---
-        # Adicionamos setor e equipamento à consulta
+        # Query 3: Buscar OS Finalizadas (Inalterada)
         query_finalizadas = text("""
             SELECT numero, 'Interna' as tipo, data, data_finalizada, secretaria, setor, equipamento, status, servico_executado
             FROM os_interna
@@ -60,7 +61,6 @@ def render():
             LIMIT 10
         """)
         df_os_finalizadas = pd.read_sql(query_finalizadas, conn, params={"display_name": display_name})
-        # --- FIM DA ALTERAÇÃO ---
 
     except Exception as e:
         st.error(f"Erro ao buscar tarefas: {e}")
@@ -92,9 +92,13 @@ def render():
                 data_formatada = pd.to_datetime(os['data']).strftime('%d/%m/%Y')
                 
                 with st.container(border=True):
-                    st.markdown(f"**OS {os['numero']} ({os['tipo']})** | {os['secretaria']} | **Registrada em:** {data_formatada}")
-                    st.markdown(f"**Solicitante:** {os['solicitante']}")
-                    
+                    # --- ALTERAÇÃO AQUI: Layout do Card Atualizado ---
+                    st.markdown(f"##### **OS {os['numero']} ({os['tipo']})** | Aberta em: {data_formatada}")
+                    st.markdown(f"**Local:** {os.get('secretaria', 'N/A')} / {os.get('setor', 'N/A')}")
+                    st.markdown(f"**Equipamento:** {os.get('equipamento', 'N/A')}")
+                    st.markdown(f"**Solicitante:** {os.get('solicitante', 'N/A')}")
+                    # --- FIM DA ALTERAÇÃO ---
+
                     with st.expander("Ver Solicitação do Cliente"):
                         st.text_area(
                             "Solicitação",
@@ -137,7 +141,6 @@ def render():
                 use_container_width=True
             )
 
-    # --- NOVA ABA 3: OS Finalizadas (Com Layout Atualizado) ---
     with tab3:
         if df_os_finalizadas.empty:
             st.info("Nenhuma OS finalizada por você foi encontrada no histórico recente.")
@@ -151,12 +154,10 @@ def render():
                     data_fim_formatada = pd.to_datetime(os['data_finalizada']).astimezone(fuso_sp).strftime('%d/%m/%Y %H:%M')
 
                 with st.container(border=True):
-                    # --- ALTERAÇÃO AQUI: Exibe as novas informações ---
                     st.markdown(f"**OS {os['numero']} ({os['tipo']})** | **Status:** {os['status']}")
                     st.markdown(f"**Local:** {os.get('secretaria', 'N/A')} / {os.get('setor', 'N/A')}")
                     st.markdown(f"**Equipamento:** {os.get('equipamento', 'N/A')}")
                     st.markdown(f"**Finalizada em:** {data_fim_formatada}")
-                    # --- FIM DA ALTERAÇÃO ---
                     
                     with st.expander("Ver Serviço Executado"):
                         st.text_area(
@@ -166,5 +167,4 @@ def render():
                             height=100,
                             key=f"serv_{os['numero']}"
                         )
-                st.markdown(" ") 
-    # --- FIM DA NOVA ABA ---
+                st.markdown(" ")

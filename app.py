@@ -8,7 +8,6 @@ import os
 import database  
 from auth import authenticate_user 
 
-# ... (função initialize_database inalterada) ...
 @st.cache_resource(show_spinner="Conectando e configurando o banco de dados...", ttl=300)
 def initialize_database():
     retries = 10
@@ -49,8 +48,11 @@ else:
 # ===============================
 import registrar_os, filtro, dar_baixa, dashboard
 import laudos, equipamentos, gerenciar_usuarios, minha_conta, minhas_tarefas
+import editar_os # <-- IMPORTA A NOVA PÁGINA
 
-# --- FUNÇÃO DE LOGIN ATUALIZADA ---
+# ===============================
+# FUNÇÃO DA TELA DE LOGIN
+# ===============================
 def render_login_page():
     st.set_page_config(layout="centered")
     st.image("Secretaria da Fazenda.png", width=300)
@@ -68,7 +70,6 @@ def render_login_page():
                     st.session_state.logged_in = True
                     st.session_state.username = user_data['username']
                     st.session_state.role = user_data['role']
-                    # --- SALVA O NOME DE EXIBIÇÃO NA SESSÃO ---
                     st.session_state.display_name = user_data['display_name'] 
                     
                     if user_data['role'] == 'tecnico':
@@ -79,7 +80,6 @@ def render_login_page():
                     st.rerun()
                 else:
                     st.error("Usuário ou senha inválido.")
-# --- FIM DA ATUALIZAÇÃO ---
 
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
@@ -90,10 +90,11 @@ if not st.session_state.logged_in:
 st.set_page_config(layout="wide")
 st.markdown("<h2 style='text-align: left;'>Sistema de Registro de Ordens de Serviço</h2>", unsafe_allow_html=True)
 
-# --- BARRA LATERAL ATUALIZADA ---
+# ===============================
+# CONTROLE DE NAVEGAÇÃO (PÓS-LOGIN)
+# ===============================
 USER_ROLE = st.session_state.get('role', 'tecnico') 
 USERNAME = st.session_state.get('username', '')
-# --- PUXA O NOME DE EXIBIÇÃO ---
 DISPLAY_NAME = st.session_state.get('display_name', USERNAME) 
 
 if 'page' not in st.session_state:
@@ -103,10 +104,8 @@ if 'page' not in st.session_state:
         st.session_state.page = "Dashboard"
 
 st.sidebar.image("Secretaria da Fazenda.png", use_container_width=True)
-# --- MOSTRA O NOME DE EXIBIÇÃO ---
 st.sidebar.markdown(f"Usuário: **{DISPLAY_NAME}**") 
 st.sidebar.markdown(f"Função: **{USER_ROLE.capitalize()}**")
-# --- FIM DA ATUALIZAÇÃO ---
 
 if USER_ROLE == 'tecnico':
     if st.sidebar.button("Minhas Tarefas", use_container_width=True): 
@@ -130,11 +129,13 @@ if st.sidebar.button("Sair", use_container_width=True, type="secondary"):
     st.session_state.logged_in = False
     st.session_state.username = ""
     st.session_state.role = ""
-    st.session_state.display_name = "" # Limpa o display name
+    st.session_state.display_name = "" 
     st.session_state.page = "Dashboard" 
     st.rerun()
 
-# ... (Lógica de renderização de página inalterada) ...
+# ===============================
+# RENDERIZAÇÃO DAS PÁGINAS
+# ===============================
 if st.session_state.page == "Dashboard" and USER_ROLE in ['admin', 'administrativo']: 
     dashboard.render()
 elif st.session_state.page == "Registrar OS": 
@@ -153,6 +154,12 @@ elif st.session_state.page == "Equipamentos" and USER_ROLE == 'admin':
     equipamentos.render()
 elif st.session_state.page == "Gerenciar Usuários" and USER_ROLE == 'admin':
     gerenciar_usuarios.render()
+
+# --- ADICIONA A ROTA PARA A NOVA PÁGINA ---
+elif st.session_state.page == "Editar OS" and USER_ROLE in ['admin', 'administrativo']:
+    editar_os.render()
+# --- FIM DA ADIÇÃO ---
+
 else:
     st.error("Você não tem permissão para acessar esta página ou a página não existe.")
     if USER_ROLE == 'tecnico':
