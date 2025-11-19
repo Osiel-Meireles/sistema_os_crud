@@ -1,5 +1,5 @@
-# CÓDIGO COMPLETO E ATUALIZADO PARA: sistema_os_crud-main/minhas_tarefas.py
-# Versão com redirecionamento para Dar Baixa
+# CÓDIGO COMPLETO E CORRIGIDO PARA: sistema_os_crud-main/minhas_tarefas.py
+# Versão com paginação e redirecionamento para Dar Baixa
 
 import streamlit as st
 import pandas as pd
@@ -217,8 +217,9 @@ def display_expandable_card(row, idx, display_name):
                 type="primary"
             ):
                 # Armazenar dados da OS para busca automática em Dar Baixa
-                st.session_state.dar_baixa_auto_numero = row.get('numero')
-                st.session_state.dar_baixa_auto_tipo = row.get('tipo')
+                st.session_state.baixa_os_numero = row.get('numero')
+                st.session_state.baixa_os_tipo = row.get('tipo')
+                st.session_state.baixa_os_id = row.get('id')
                 st.session_state.current_page = "Dar Baixa"
                 st.rerun()
         
