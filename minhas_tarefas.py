@@ -1,325 +1,490 @@
 # CÓDIGO COMPLETO E CORRIGIDO PARA: sistema_os_crud-main/minhas_tarefas.py
+
 import streamlit as st
 import pandas as pd
 from sqlalchemy import text
 from database import get_connection
+from config import STATUS_OPTIONS, CATEGORIAS, EQUIPAMENTOS
 from datetime import datetime
 import pytz
 
-def render():
-    display_name = st.session_state.get('display_name')
-    username = st.session_state.get('username')
+def f_atualizar_os_tecnico(conn, os_id, os_tipo, dados_atualizacao):
+    """Atualiza uma OS específica (apenas campos permitidos para técnicos)."""
+    table_name = "os_interna" if os_tipo == "Interna" else "os_externa"
     
-    if not display_name:
-        st.error("Sessão inválida. Por favor, faça login novamente.")
-        st.session_state.logged_in = False
-        st.rerun()
-        return
-
-    conn = get_connection()
-
-    st.title(f"Minhas Tarefas - {display_name}")
-    st.markdown("---")
-
-    # Obtenha dados das OS do técnico
     try:
+        with conn.connect() as con:
+            with con.begin():
+                set_clause = []
+                params = {"id": os_id}
+                
+                for key, value in dados_atualizacao.items():
+                    if key != "id":
+                        set_clause.append(f"{key} = :{key}")
+                        params[key] = value
+                
+                if not set_clause:
+                    st.error("Nenhum dado para atualizar.")
+                    return False
+                
+                query = text(f"UPDATE {table_name} SET {', '.join(set_clause)} WHERE id = :id")
+                con.execute(query, params)
+                st.success(f"Ordem de Serviço atualizada com sucesso!")
+                return True
+    except Exception as e:
+        st.error(f"Erro ao atualizar OS: {e}")
+        return False
+
+def buscar_tarefas_tecnico(conn, display_name):
+    """Busca todas as OSs atribuídas ao técnico logado."""
+    try:
+        # Query para buscar OSs de ambas as tabelas
         query = text("""
-            SELECT 
-                id, numero, 'Interna' as tipo, status, secretaria, setor, solicitante, 
-                telefone, data, hora, equipamento, patrimonio, categoria, 
-                solicitacao_cliente, servico_executado, data_finalizada
-            FROM os_interna
-            WHERE tecnico = :tech_name OR tecnico = :username
-            UNION
-            SELECT 
-                id, numero, 'Externa' as tipo, status, secretaria, setor, solicitante, 
-                telefone, data, hora, equipamento, patrimonio, categoria, 
-                solicitacao_cliente, servico_executado, data_finalizada
-            FROM os_externa
-            WHERE tecnico = :tech_name OR tecnico = :username
+            SELECT *, 'Interna' as tipo FROM os_interna 
+            WHERE tecnico = :tecnico AND status != 'ENTREGUE AO CLIENTE'
+            UNION ALL
+            SELECT *, 'Externa' as tipo FROM os_externa 
+            WHERE tecnico = :tecnico AND status != 'ENTREGUE AO CLIENTE'
             ORDER BY data DESC, hora DESC
         """)
         
         with conn.connect() as con:
-            result = con.execute(query, {"tech_name": display_name, "username": username})
+            result = con.execute(query, {"tecnico": display_name})
             rows = result.fetchall()
             columns = result.keys()
             df = pd.DataFrame(rows, columns=columns)
-        
-        if df.empty:
-            st.warning("Nenhuma OS encontrada.")
-            with st.expander("Debug - Informações do Técnico"):
-                st.write(f"**Display Name:** {display_name}")
-                st.write(f"**Username:** {username}")
-            return
+            return df
     except Exception as e:
-        st.error(f"Erro ao buscar OS: {e}")
-        st.exception(e)
-        return
+        st.error(f"Erro ao buscar tarefas: {e}")
+        return pd.DataFrame()
 
-    # Exibição das estatísticas
-    st.markdown("### Resumo de Minhas Tarefas")
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.metric("Total de OS", len(df))
-    
-    with col2:
-        abertas = len(df[df['status'].isin(['EM ABERTO'])])
-        st.metric("Em Aberto", abertas)
-    
-    with col3:
-        aguardando_pecas = len(df[df['status'] == 'AGUARDANDO PEÇA(S)'])
-        st.metric("Aguardando Peças", aguardando_pecas)
-    
-    with col4:
-        finalizadas = len(df[df['status'].isin(['FINALIZADO', 'AGUARDANDO RETIRADA'])])
-        st.metric("Finalizadas", finalizadas)
-
-    st.markdown("---")
-
-    # SEPARAR OS EM CATEGORIAS
-    df_aberto = df[df['status'].isin(['EM ABERTO', 'AGUARDANDO PEÇA(S)'])]
-    df_finalizado = df[df['status'].isin(['FINALIZADO', 'AGUARDANDO RETIRADA', 'ENTREGUE AO CLIENTE'])]
-    
-    # Obter laudos pendentes
+def contar_os_abertas(conn, display_name):
+    """Conta OSs em aberto atribuídas ao técnico."""
     try:
-        query_laudos = text("""
-            SELECT id, numero_os, tipo_os, diagnostico, estado_conservacao, tecnico
-            FROM laudos
-            WHERE status = 'PENDENTE' AND tecnico = :tecnico
-            ORDER BY id DESC
+        query = text("""
+            SELECT COUNT(*) as total FROM (
+                SELECT id FROM os_interna 
+                WHERE tecnico = :tecnico AND status = 'EM ABERTO'
+                UNION ALL
+                SELECT id FROM os_externa 
+                WHERE tecnico = :tecnico AND status = 'EM ABERTO'
+            ) as combined
         """)
+        
         with conn.connect() as con:
-            result_laudos = con.execute(query_laudos, {"tecnico": display_name}).fetchall()
-            if result_laudos:
-                df_laudos_pendentes = pd.DataFrame(result_laudos, columns=result_laudos[0]._mapping.keys())
-            else:
-                df_laudos_pendentes = pd.DataFrame()
+            result = con.execute(query, {"tecnico": display_name}).fetchone()
+            return result[0] if result else 0
+    except Exception:
+        return 0
+
+def contar_os_aguardando_pecas(conn, display_name):
+    """Conta OSs aguardando peças atribuídas ao técnico."""
+    try:
+        query = text("""
+            SELECT COUNT(*) as total FROM (
+                SELECT id FROM os_interna 
+                WHERE tecnico = :tecnico AND status = 'AGUARDANDO PEÇA(S)'
+                UNION ALL
+                SELECT id FROM os_externa 
+                WHERE tecnico = :tecnico AND status = 'AGUARDANDO PEÇA(S)'
+            ) as combined
+        """)
+        
+        with conn.connect() as con:
+            result = con.execute(query, {"tecnico": display_name}).fetchone()
+            return result[0] if result else 0
+    except Exception:
+        return 0
+
+def buscar_os_pendentes_laudo(conn, display_name):
+    """Busca OSs com status AGUARDANDO PEÇA(S) que ainda não têm laudo."""
+    try:
+        # Primeiro buscar todas as OSs AGUARDANDO PEÇA(S) do técnico
+        query_os = text("""
+            SELECT id, numero, 'Interna' as tipo, secretaria, equipamento, status, data
+            FROM os_interna 
+            WHERE tecnico = :tecnico AND status = 'AGUARDANDO PEÇA(S)'
+            UNION ALL
+            SELECT id, numero, 'Externa' as tipo, secretaria, equipamento, status, data
+            FROM os_externa 
+            WHERE tecnico = :tecnico AND status = 'AGUARDANDO PEÇA(S)'
+            ORDER BY data DESC
+        """)
+        
+        with conn.connect() as con:
+            result = con.execute(query_os, {"tecnico": display_name})
+            rows = result.fetchall()
+            columns = result.keys()
+            df_os = pd.DataFrame(rows, columns=columns)
+            
+            # Para cada OS, verificar se já tem laudo
+            os_sem_laudo = []
+            for _, row in df_os.iterrows():
+                tipo_os_laudo = f"OS {row['tipo']}"
+                query_laudo = text("""
+                    SELECT COUNT(*) as total FROM laudos 
+                    WHERE numero_os = :numero AND tipo_os = :tipo
+                """)
+                result_laudo = con.execute(query_laudo, {
+                    "numero": row['numero'],
+                    "tipo": tipo_os_laudo
+                }).fetchone()
+                
+                if result_laudo[0] == 0:  # Não tem laudo
+                    os_sem_laudo.append(row)
+            
+            return pd.DataFrame(os_sem_laudo) if os_sem_laudo else pd.DataFrame()
     except Exception as e:
-        st.error(f"Erro ao buscar laudos pendentes: {e}")
-        df_laudos_pendentes = pd.DataFrame()
-    
-    # CRIAR ABAS
-    tab1, tab2, tab3 = st.tabs(["📋 OS Em Aberto", "📝 Laudos Pendentes", "✅ Últimas 5 Finalizadas"])
-    
-    # ================= ABA 1: OS EM ABERTO =================
-    with tab1:
-        st.markdown("### Ordens de Serviço Em Aberto")
+        st.error(f"Erro ao buscar OS pendentes de laudo: {e}")
+        return pd.DataFrame()
+
+def buscar_os_recentes_finalizadas(conn, display_name, limite=5):
+    """Busca as últimas OSs finalizadas do técnico."""
+    try:
+        query = text("""
+            SELECT *, 'Interna' as tipo FROM os_interna 
+            WHERE tecnico = :tecnico AND status = 'FINALIZADO'
+            UNION ALL
+            SELECT *, 'Externa' as tipo FROM os_externa 
+            WHERE tecnico = :tecnico AND status = 'FINALIZADO'
+            ORDER BY data_finalizada DESC
+            LIMIT :limite
+        """)
         
-        if len(df_aberto) == 0:
-            st.warning("✅ Você não possui nenhuma OS em aberto! Ótimo trabalho!")
-            st.info("📊 Todas as suas OS foram finalizadas ou estão aguardando peça(s).")
-        else:
-            st.info(f"📌 Você tem **{len(df_aberto)}** OS em aberto para trabalhar.")
-            
-            # Separar por status
-            df_em_aberto = df[df['status'] == 'EM ABERTO']
-            df_aguardando_pecas = df[df['status'] == 'AGUARDANDO PEÇA(S)']
-            
-            if len(df_em_aberto) > 0:
-                st.markdown("#### 🔴 Em Aberto para Trabalho")
-                for idx, row in df_em_aberto.iterrows():
-                    display_expandable_card(row, idx, display_name)
-            
-            if len(df_aguardando_pecas) > 0:
-                st.markdown("#### 🟠 Aguardando Peça(s)")
-                st.info("Essas OS estão aguardando peças. Você pode continuar o trabalho quando as peças chegarem.")
-                for idx, row in df_aguardando_pecas.iterrows():
-                    display_expandable_card(row, idx, display_name)
+        with conn.connect() as con:
+            result = con.execute(query, {"tecnico": display_name, "limite": limite})
+            rows = result.fetchall()
+            columns = result.keys()
+            df = pd.DataFrame(rows, columns=columns)
+            return df
+    except Exception as e:
+        st.error(f"Erro ao buscar OS finalizadas: {e}")
+        return pd.DataFrame()
+
+def display_expandable_card(row, idx, display_name):
+    """Exibe um card expansível com informações da OS."""
     
-    # ================= ABA 2: LAUDOS PENDENTES =================
-    with tab2:
-        st.markdown("### Laudos Técnicos Pendentes")
+    # Criar identificador único baseado no índice e ID da OS
+    os_id = row.get('id', idx)
+    card_key = f"card_{idx}_{os_id}"
+    
+    # Título do card com status colorido
+    status = row.get('status', 'N/A')
+    if status == "EM ABERTO":
+        status_emoji = "🔴"
+    elif status == "AGUARDANDO PEÇA(S)":
+        status_emoji = "🟠"
+    elif status == "FINALIZADO":
+        status_emoji = "🟢"
+    else:
+        status_emoji = "⚪"
+    
+    titulo = f"OS #{row.get('numero', 'N/A')} - {row.get('secretaria', 'N/A')} - {status_emoji} {status}"
+    
+    with st.expander(titulo, expanded=False):
+        # Informações básicas em colunas
+        col1, col2, col3 = st.columns(3)
         
-        if df_laudos_pendentes.empty:
-            st.success("✅ Você não possui laudos pendentes!")
-            st.info("📊 Todos os seus laudos foram processados.")
-        else:
-            st.warning(f"⚠️ Você tem **{len(df_laudos_pendentes)}** laudo(s) pendente(s).")
+        with col1:
+            st.markdown(f"**Número:** {row.get('numero', 'N/A')}")
+            st.markdown(f"**Tipo:** {row.get('tipo', 'N/A')}")
+            st.markdown(f"**Patrimônio:** {row.get('patrimonio', 'N/A')}")
+        
+        with col2:
+            st.markdown(f"**Secretaria:** {row.get('secretaria', 'N/A')}")
+            st.markdown(f"**Setor:** {row.get('setor', 'N/A')}")
+            st.markdown(f"**Categoria:** {row.get('categoria', 'N/A')}")
+        
+        with col3:
+            st.markdown(f"**Status:** {status}")
+            st.markdown(f"**Equipamento:** {row.get('equipamento', 'N/A')}")
+            try:
+                data_formatada = pd.to_datetime(row.get('data')).strftime('%d/%m/%Y')
+                st.markdown(f"**Data:** {data_formatada}")
+            except:
+                st.markdown(f"**Data:** {row.get('data', 'N/A')}")
+        
+        st.markdown("---")
+        
+        # Solicitação do Cliente
+        st.markdown("**Solicitação do Cliente:**")
+        st.text_area(
+            "Solicitação",
+            value=row.get('solicitacao_cliente', '') or '',
+            disabled=True,
+            height=100,
+            label_visibility="collapsed",
+            key=f"solicitacao_{card_key}"  # ✅ KEY ÚNICA
+        )
+        
+        # Serviço Executado / Descrição
+        st.markdown("**Serviço Executado / Descrição:**")
+        texto_servico = f"{row.get('servico_executado', '') or ''}\n{row.get('descricao', '') or ''}".strip()
+        st.text_area(
+            "Serviço",
+            value=texto_servico,
+            disabled=True,
+            height=100,
+            label_visibility="collapsed",
+            key=f"servico_{card_key}"  # ✅ KEY ÚNICA
+        )
+        
+        st.markdown("---")
+        
+        # Botões de ação
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if st.button(
+                "Atualizar/Finalizar OS",
+                use_container_width=True,
+                key=f"btn_atualizar_{card_key}",  # ✅ KEY ÚNICA
+                type="primary"
+            ):
+                st.session_state.os_para_atualizar = row.to_dict()
+                st.session_state.os_para_atualizar_idx = idx
+                st.rerun()
+        
+        with col2:
+            if st.button(
+                "Registrar Laudo para esta OS",
+                use_container_width=True,
+                key=f"btn_laudo_{card_key}"  # ✅ KEY ÚNICA
+            ):
+                # Preparar dados para página de laudos
+                st.session_state.laudo_os_id = row.get('id')
+                st.session_state.laudo_os_numero = row.get('numero')
+                st.session_state.laudo_os_tipo = row.get('tipo')
+                st.session_state.laudo_tecnico = display_name
+                st.session_state.current_page = "Laudos"
+                st.rerun()
+
+def render_modal_atualizar_os(conn, display_name):
+    """Renderiza modal para atualizar/finalizar OS."""
+    if 'os_para_atualizar' not in st.session_state or st.session_state.os_para_atualizar is None:
+        return
+    
+    os_data = st.session_state.os_para_atualizar
+    
+    @st.dialog("Atualizar/Finalizar Ordem de Serviço", width="large")
+    def show_modal():
+        st.markdown(f"### Atualizando OS #{os_data.get('numero', 'N/A')}")
+        st.markdown(f"**Tipo:** {os_data.get('tipo')} | **Status Atual:** {os_data.get('status', 'N/A')}")
+        st.markdown("---")
+        
+        with st.form("form_atualizar_os_tecnico"):
+            # Status
+            status_atual = os_data.get('status', 'EM ABERTO')
+            if status_atual == "EM ABERTO":
+                opcoes_status = ["EM ABERTO", "AGUARDANDO PEÇA(S)"]
+            elif status_atual == "AGUARDANDO PEÇA(S)":
+                opcoes_status = ["AGUARDANDO PEÇA(S)", "AGUARDANDO RETIRADA"]
+            else:
+                opcoes_status = [status_atual]
+            
+            status = st.selectbox(
+                "Status *",
+                opcoes_status,
+                index=0
+            )
+            
+            st.info("ℹ️ Técnicos podem alterar status de 'EM ABERTO' para 'AGUARDANDO PEÇA(S)' ou finalizar para 'AGUARDANDO RETIRADA'.")
+            
+            # Serviço Executado
+            st.markdown("#### Descrição do Serviço")
+            servico_executado = st.text_area(
+                "Serviço Executado *",
+                value=os_data.get('servico_executado', ''),
+                height=150,
+                placeholder="Descreva o serviço realizado...",
+                key="text_servico_executado"
+            )
+            
             st.markdown("---")
             
-            # Exibir laudos como cards
-            for idx, row in df_laudos_pendentes.iterrows():
-                with st.container(border=True):
-                    col1, col2, col3 = st.columns([2, 1, 1])
+            col1, col2 = st.columns(2)
+            
+            submitted = col1.form_submit_button(
+                "Salvar Alterações",
+                use_container_width=True,
+                type="primary"
+            )
+            
+            cancelar = col2.form_submit_button(
+                "Cancelar",
+                use_container_width=True
+            )
+            
+            if submitted:
+                if not servico_executado:
+                    st.error("O campo 'Serviço Executado' é obrigatório.")
+                else:
+                    # Preparar dados para atualização
+                    dados_atualizacao = {
+                        "status": status,
+                        "servico_executado": servico_executado
+                    }
+                    
+                    # Se estiver finalizando, adicionar data de finalização
+                    if status == "AGUARDANDO RETIRADA":
+                        dados_atualizacao["status"] = "AGUARDANDO RETIRADA"
+                        dados_atualizacao["data_finalizada"] = datetime.now(pytz.timezone('America/Sao_Paulo'))
+                    
+                    if f_atualizar_os_tecnico(
+                        conn,
+                        os_data.get('id'),
+                        os_data.get('tipo'),
+                        dados_atualizacao
+                    ):
+                        del st.session_state.os_para_atualizar
+                        if 'os_para_atualizar_idx' in st.session_state:
+                            del st.session_state.os_para_atualizar_idx
+                        st.rerun()
+            
+            if cancelar:
+                del st.session_state.os_para_atualizar
+                if 'os_para_atualizar_idx' in st.session_state:
+                    del st.session_state.os_para_atualizar_idx
+                st.rerun()
+    
+    show_modal()
+
+def render():
+    """Função principal de renderização da página Minhas Tarefas."""
+    st.markdown("## Minhas Tarefas")
+    
+    conn = get_connection()
+    display_name = st.session_state.get("display_name", st.session_state.get("username", ""))
+    
+    # Renderizar modal de atualização se necessário
+    render_modal_atualizar_os(conn, display_name)
+    
+    # Buscar estatísticas
+    total_abertas = contar_os_abertas(conn, display_name)
+    total_aguardando_pecas = contar_os_aguardando_pecas(conn, display_name)
+    
+    # Dashboard de estatísticas
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("OSs em Aberto", total_abertas, help="Ordens de Serviço aguardando atendimento")
+    
+    with col2:
+        st.metric("Aguardando Peças", total_aguardando_pecas, help="Ordens aguardando chegada de peças")
+    
+    with col3:
+        total_ativas = total_abertas + total_aguardando_pecas
+        st.metric("Total Ativo", total_ativas, help="Total de OSs que requerem ação")
+    
+    st.markdown("---")
+    
+    # Criar abas
+    tab1, tab2, tab3 = st.tabs([
+        "📋 OSs em Aberto",
+        "📝 Pendentes de Laudo",
+        "✅ Últimas Finalizadas"
+    ])
+    
+    # ABA 1: OSs em Aberto
+    with tab1:
+        st.markdown("### Ordens de Serviço em Aberto")
+        
+        # Buscar OSs abertas e aguardando peças
+        df_abertas = buscar_tarefas_tecnico(conn, display_name)
+        
+        if df_abertas.empty:
+            st.success("🎉 Parabéns! Você não tem ordens de serviço em aberto no momento.")
+            st.info("Todas as suas tarefas foram concluídas ou estão aguardando retirada.")
+        else:
+            st.info(f"Você tem **{len(df_abertas)}** ordem(ns) de serviço ativa(s).")
+            
+            # Exibir cards
+            for idx, row in df_abertas.iterrows():
+                display_expandable_card(row, idx, display_name)
+    
+    # ABA 2: Pendentes de Laudo
+    with tab2:
+        st.markdown("### OSs Aguardando Laudo de Avaliação")
+        
+        df_pendentes = buscar_os_pendentes_laudo(conn, display_name)
+        
+        if df_pendentes.empty:
+            st.success("✅ Não há ordens de serviço pendentes de laudo.")
+        else:
+            st.warning(f"**{len(df_pendentes)}** OS(s) aguardando laudo de avaliação.")
+            
+            # Exibir em formato de tabela simplificado
+            for idx, row in df_pendentes.iterrows():
+                card_id = f"pendente_{idx}_{row.get('id')}"
+                
+                with st.container():
+                    col1, col2, col3, col4 = st.columns([2, 2, 2, 1])
                     
                     with col1:
-                        st.markdown(f"**OS:** {row['numero_os']} ({row['tipo_os']})")
-                        st.markdown(f"**Estado de Conservação:** {row['estado_conservacao']}")
+                        st.markdown(f"**OS #{row.get('numero')}**")
+                        st.caption(row.get('tipo'))
                     
                     with col2:
-                        st.markdown(f"**ID Laudo:** {row['id']}")
+                        st.markdown(f"**{row.get('secretaria')}**")
+                        st.caption(row.get('equipamento', 'N/A'))
                     
                     with col3:
-                        if st.button("Visualizar", key=f"view_laudo_{row['id']}"):
-                            st.session_state.view_laudo_id = row["id"]
+                        st.markdown(f"**{row.get('status')}**")
+                        try:
+                            data_fmt = pd.to_datetime(row.get('data')).strftime('%d/%m/%Y')
+                            st.caption(data_fmt)
+                        except:
+                            st.caption(row.get('data', 'N/A'))
+                    
+                    with col4:
+                        if st.button(
+                            "📝 Laudo",
+                            key=f"btn_laudo_pendente_{card_id}",
+                            use_container_width=True
+                        ):
+                            st.session_state.laudo_os_id = row.get('id')
+                            st.session_state.laudo_os_numero = row.get('numero')
+                            st.session_state.laudo_os_tipo = row.get('tipo')
+                            st.session_state.laudo_tecnico = display_name
                             st.session_state.current_page = "Laudos"
                             st.rerun()
                     
-                    # Diagnóstico resumido
-                    diagnostico_resumido = str(row['diagnostico'])[:100]
-                    if len(str(row['diagnostico'])) > 100:
-                        diagnostico_resumido += "..."
-                    st.text(f"📋 {diagnostico_resumido}")
+                    st.markdown("---")
     
-    # ================= ABA 3: ÚLTIMAS 5 FINALIZADAS =================
+    # ABA 3: Últimas Finalizadas
     with tab3:
-        st.markdown("### Últimas 5 Ordens de Serviço Finalizadas")
+        st.markdown("### Últimas 5 OSs Finalizadas")
         
-        # Pegar as últimas 5 OS finalizadas
-        df_finalizadas_ultimas = df_finalizado.head(5)
+        df_finalizadas = buscar_os_recentes_finalizadas(conn, display_name, limite=5)
         
-        if len(df_finalizadas_ultimas) == 0:
-            st.info("📊 Você ainda não finalizou nenhuma OS.")
+        if df_finalizadas.empty:
+            st.info("Nenhuma ordem de serviço finalizada recentemente.")
         else:
-            st.success(f"🎉 Você finalizou **{len(df_finalizado)}** OS no total!")
-            st.markdown("---")
+            st.success(f"**{len(df_finalizadas)}** OS(s) finalizadas recentemente.")
             
-            for idx, row in df_finalizadas_ultimas.iterrows():
-                with st.container(border=True):
-                    # Status com cor
-                    status_icons = {
-                        'EM ABERTO': '🔴',
-                        'AGUARDANDO PEÇA(S)': '🟠',
-                        'FINALIZADO': '🟢',
-                        'AGUARDANDO RETIRADA': '🟡',
-                        'ENTREGUE AO CLIENTE': '🔵'
-                    }
-                    status_icon = status_icons.get(row['status'], '⚪')
-                    
-                    # Formatar data
-                    data_formatada = "N/A"
-                    if pd.notna(row["data"]):
-                        try:
-                            data_formatada = pd.to_datetime(row["data"]).strftime("%d/%m/%Y")
-                        except:
-                            data_formatada = str(row["data"])
-                    
-                    data_finalizacao = "N/A"
-                    if pd.notna(row["data_finalizada"]):
-                        try:
-                            data_finalizacao = pd.to_datetime(row["data_finalizada"]).strftime("%d/%m/%Y")
-                        except:
-                            data_finalizacao = str(row["data_finalizada"])
-                    
-                    col1, col2 = st.columns([2, 1])
+            # Exibir em formato de tabela
+            for idx, row in df_finalizadas.iterrows():
+                with st.container():
+                    col1, col2, col3, col4 = st.columns([1, 2, 2, 2])
                     
                     with col1:
-                        st.markdown(f"### {status_icon} OS #{row['numero']}")
-                        st.markdown(f"**Tipo:** {row['tipo']} | **Secretaria:** {row['secretaria']}")
-                        st.markdown(f"**Solicitante:** {row['solicitante'] if pd.notna(row['solicitante']) else 'N/A'}")
-                        st.markdown(f"**Data da OS:** {data_formatada}")
-                        st.markdown(f"**Data de Finalização:** {data_finalizacao}")
-                        st.markdown(f"**Status:** {row['status']}")
+                        st.markdown(f"**#{row.get('numero')}**")
                     
                     with col2:
-                        st.markdown(f"**Equipamento:**\n{row['equipamento'] if pd.notna(row['equipamento']) else 'N/A'}")
-                        st.markdown(f"\n**Patrimônio:**\n{row['patrimonio'] if pd.notna(row['patrimonio']) else 'N/A'}")
+                        st.markdown(f"{row.get('secretaria', 'N/A')}")
+                        st.caption(row.get('tipo'))
                     
-                    # Descrição do serviço se houver
-                    if pd.notna(row['servico_executado']) and str(row['servico_executado']).strip() != '':
-                        st.markdown("**Serviço Executado:**")
-                        st.text(str(row['servico_executado']))
-    
-    st.markdown("---")
-    st.info("💡 Use as abas para navegar entre suas tarefas em aberto, laudos pendentes e histórico de finalizações.")
-
-def display_expandable_card(row, idx, display_name):
-    """Exibe um card expansível com as informações da OS"""
-    
-    status_icons = {
-        'EM ABERTO': '🔴',
-        'AGUARDANDO PEÇA(S)': '🟠',
-        'FINALIZADO': '🟢',
-        'AGUARDANDO RETIRADA': '🟡',
-        'ENTREGUE AO CLIENTE': '🔵'
-    }
-    status_icon = status_icons.get(row['status'], '⚪')
-    
-    # Formatar data
-    data_formatada = ""
-    if pd.notna(row["data"]):
-        try:
-            data_formatada = pd.to_datetime(row["data"]).strftime("%d/%m/%Y")
-        except:
-            data_formatada = str(row["data"])
-    
-    titulo_expander = f"{status_icon} **OS #{row['numero']}** | {row['tipo']} | {row['secretaria']} | {data_formatada}"
-    
-    with st.expander(titulo_expander, expanded=False):
-        col_info1, col_info2 = st.columns(2)
-        
-        with col_info1:
-            st.markdown("#### Informações da OS")
-            st.markdown(f"**Número:** {row['numero']}")
-            st.markdown(f"**Tipo:** {row['tipo']}")
-            st.markdown(f"**Status:** {row['status']}")
-            st.markdown(f"**Data:** {data_formatada}")
-            if pd.notna(row["hora"]):
-                st.markdown(f"**Hora:** {row['hora']}")
-        
-        with col_info2:
-            st.markdown("#### Localização")
-            st.markdown(f"**Secretaria:** {row['secretaria']}")
-            st.markdown(f"**Setor:** {row['setor'] if pd.notna(row['setor']) else 'N/A'}")
-        
-        st.divider()
-        
-        col_pessoa1, col_pessoa2 = st.columns(2)
-        
-        with col_pessoa1:
-            st.markdown("#### Solicitante")
-            st.markdown(f"**Nome:** {row['solicitante'] if pd.notna(row['solicitante']) else 'N/A'}")
-            st.markdown(f"**Telefone:** {row['telefone'] if pd.notna(row['telefone']) else 'N/A'}")
-        
-        with col_pessoa2:
-            st.markdown("#### Equipamento")
-            st.markdown(f"**Nome:** {row['equipamento'] if pd.notna(row['equipamento']) else 'N/A'}")
-            st.markdown(f"**Patrimônio:** {row['patrimonio'] if pd.notna(row['patrimonio']) else 'N/A'}")
-            st.markdown(f"**Categoria:** {row['categoria'] if pd.notna(row['categoria']) else 'N/A'}")
-        
-        st.divider()
-        
-        st.markdown("#### Descrições")
-        
-        if pd.notna(row['solicitacao_cliente']) and str(row['solicitacao_cliente']).strip() != '':
-            st.markdown("**Solicitação do Cliente:**")
-            st.text_area(
-                "solicitacao",
-                value=str(row['solicitacao_cliente']),
-                height=100,
-                disabled=True,
-                label_visibility="collapsed"
-            )
-        
-        if pd.notna(row['servico_executado']) and str(row['servico_executado']).strip() != '':
-            st.markdown("**Serviço Executado:**")
-            st.text_area(
-                "servico",
-                value=str(row['servico_executado']),
-                height=100,
-                disabled=True,
-                label_visibility="collapsed"
-            )
-        
-        st.divider()
-        st.markdown("#### Ações")
-        col_btn1, col_btn2 = st.columns(2)
-        
-        with col_btn1:
-            if st.button("Finalizar/Dar Baixa", key=f"update_{row['id']}_{idx}"):
-                st.session_state.baixa_os_id = row['id']
-                st.session_state.baixa_os_tipo = row['tipo']
-                st.session_state.baixa_os_numero = row['numero']
-                st.session_state.current_page = "Dar Baixa"
-                st.rerun()
-        
-        with col_btn2:
-            if st.button("Registrar Laudo", key=f"laudo_{row['id']}_{idx}"):
-                st.session_state.laudo_os_id = row['id']
-                st.session_state.laudo_os_numero = row['numero']
-                st.session_state.laudo_os_tipo = row['tipo']
-                st.session_state.laudo_tecnico = display_name
-                st.session_state.current_page = "Registrar Laudo"
-                st.rerun()
+                    with col3:
+                        st.markdown(f"{row.get('equipamento', 'N/A')}")
+                        st.caption(row.get('categoria', 'N/A'))
+                    
+                    with col4:
+                        try:
+                            data_fin = pd.to_datetime(row.get('data_finalizada'))
+                            data_fmt = data_fin.strftime('%d/%m/%Y')
+                            st.markdown(f"🟢 Finalizado")
+                            st.caption(data_fmt)
+                        except:
+                            st.markdown("🟢 Finalizado")
+                    
+                    st.markdown("---")
