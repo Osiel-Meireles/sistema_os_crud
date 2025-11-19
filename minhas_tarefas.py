@@ -1,4 +1,5 @@
-# CÓDIGO COMPLETO E CORRIGIDO PARA: sistema_os_crud-main/minhas_tarefas.py
+# CÓDIGO COMPLETO E ATUALIZADO PARA: sistema_os_crud-main/minhas_tarefas.py
+# Versão com paginação integrada
 
 import streamlit as st
 import pandas as pd
@@ -7,6 +8,7 @@ from database import get_connection
 from config import STATUS_OPTIONS, CATEGORIAS, EQUIPAMENTOS
 from datetime import datetime
 import pytz
+import math
 
 def f_atualizar_os_tecnico(conn, os_id, os_tipo, dados_atualizacao):
     """Atualiza uma OS específica (apenas campos permitidos para técnicos)."""
@@ -349,6 +351,36 @@ def render_modal_atualizar_os(conn, display_name):
     
     show_modal()
 
+def render_pagination_controls(page_var_name, total_pages):
+    """Renderiza controles de paginação reutilizáveis."""
+    current_page = st.session_state.get(page_var_name, 1)
+    
+    col1, col2, col3, col4, col5 = st.columns([1, 1, 2, 1, 1])
+    
+    with col1:
+        if st.button("⏮️ Primeira", disabled=(current_page == 1), key=f"first_{page_var_name}"):
+            st.session_state[page_var_name] = 1
+            st.rerun()
+    
+    with col2:
+        if st.button("◀️ Anterior", disabled=(current_page == 1), key=f"prev_{page_var_name}"):
+            st.session_state[page_var_name] -= 1
+            st.rerun()
+    
+    with col3:
+        st.markdown(f"<div style='text-align: center'>Página {current_page} de {total_pages}</div>", 
+                   unsafe_allow_html=True)
+    
+    with col4:
+        if st.button("Próxima ▶️", disabled=(current_page == total_pages), key=f"next_{page_var_name}"):
+            st.session_state[page_var_name] += 1
+            st.rerun()
+    
+    with col5:
+        if st.button("Última ⏭️", disabled=(current_page == total_pages), key=f"last_{page_var_name}"):
+            st.session_state[page_var_name] = total_pages
+            st.rerun()
+
 def render():
     """Função principal de renderização da página Minhas Tarefas."""
     st.markdown("## Minhas Tarefas")
@@ -378,6 +410,9 @@ def render():
     
     st.markdown("---")
     
+    # Definir itens por página
+    ITEMS_PER_PAGE = 5
+    
     # Criar abas
     tab1, tab2, tab3 = st.tabs([
         "📋 OSs em Aberto",
@@ -385,7 +420,7 @@ def render():
         "✅ Últimas Finalizadas"
     ])
     
-    # ABA 1: OSs em Aberto
+    # ABA 1: OSs em Aberto (COM PAGINAÇÃO)
     with tab1:
         st.markdown("### Ordens de Serviço em Aberto")
         
@@ -396,13 +431,39 @@ def render():
             st.success("🎉 Parabéns! Você não tem ordens de serviço em aberto no momento.")
             st.info("Todas as suas tarefas foram concluídas ou estão aguardando retirada.")
         else:
-            st.info(f"Você tem **{len(df_abertas)}** ordem(ns) de serviço ativa(s).")
+            # Inicializar página se não existir
+            if 'tarefas_page' not in st.session_state:
+                st.session_state.tarefas_page = 1
             
-            # Exibir cards
-            for idx, row in df_abertas.iterrows():
+            # Calcular paginação
+            total_items = len(df_abertas)
+            total_pages = math.ceil(total_items / ITEMS_PER_PAGE)
+            
+            # Validar página atual
+            if st.session_state.tarefas_page > total_pages:
+                st.session_state.tarefas_page = total_pages
+            if st.session_state.tarefas_page < 1:
+                st.session_state.tarefas_page = 1
+            
+            # Calcular índices
+            start_idx = (st.session_state.tarefas_page - 1) * ITEMS_PER_PAGE
+            end_idx = start_idx + ITEMS_PER_PAGE
+            df_page = df_abertas.iloc[start_idx:end_idx]
+            
+            # Mostrar informação de paginação
+            st.info(f"Exibindo **{len(df_page)}** de **{total_items}** ordem(ns) (Página {st.session_state.tarefas_page}/{total_pages})")
+            
+            # Exibir cards da página atual
+            for idx_real, (idx, row) in enumerate(df_page.iterrows()):
+                # Usar índice da página original para manter consistência
                 display_expandable_card(row, idx, display_name)
+            
+            # Controles de paginação
+            if total_pages > 1:
+                st.markdown("---")
+                render_pagination_controls('tarefas_page', total_pages)
     
-    # ABA 2: Pendentes de Laudo
+    # ABA 2: Pendentes de Laudo (COM PAGINAÇÃO)
     with tab2:
         st.markdown("### OSs Aguardando Laudo de Avaliação")
         
@@ -411,10 +472,30 @@ def render():
         if df_pendentes.empty:
             st.success("✅ Não há ordens de serviço pendentes de laudo.")
         else:
-            st.warning(f"**{len(df_pendentes)}** OS(s) aguardando laudo de avaliação.")
+            # Inicializar página se não existir
+            if 'pendentes_page' not in st.session_state:
+                st.session_state.pendentes_page = 1
+            
+            # Calcular paginação
+            total_items = len(df_pendentes)
+            total_pages = math.ceil(total_items / ITEMS_PER_PAGE)
+            
+            # Validar página atual
+            if st.session_state.pendentes_page > total_pages:
+                st.session_state.pendentes_page = total_pages
+            if st.session_state.pendentes_page < 1:
+                st.session_state.pendentes_page = 1
+            
+            # Calcular índices
+            start_idx = (st.session_state.pendentes_page - 1) * ITEMS_PER_PAGE
+            end_idx = start_idx + ITEMS_PER_PAGE
+            df_page = df_pendentes.iloc[start_idx:end_idx]
+            
+            # Mostrar informação
+            st.warning(f"**{total_items}** OS(s) aguardando laudo (Página {st.session_state.pendentes_page}/{total_pages})")
             
             # Exibir em formato de tabela simplificado
-            for idx, row in df_pendentes.iterrows():
+            for idx, row in df_page.iterrows():
                 card_id = f"pendente_{idx}_{row.get('id')}"
                 
                 with st.container():
@@ -450,8 +531,12 @@ def render():
                             st.rerun()
                     
                     st.markdown("---")
+            
+            # Controles de paginação
+            if total_pages > 1:
+                render_pagination_controls('pendentes_page', total_pages)
     
-    # ABA 3: Últimas Finalizadas
+    # ABA 3: Últimas Finalizadas (SEM PAGINAÇÃO - máximo 5)
     with tab3:
         st.markdown("### Últimas 5 OSs Finalizadas")
         
