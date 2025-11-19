@@ -16,3 +16,7 @@ __pycache__/
 # Arquivos de ambiente
 .env
 osdti_env/
+
+# Arquivos de contexto e configuração
+/CONTEXTO_DO_PROJETO.md
+/RESUMO_DE_ATUALIZACOES.md

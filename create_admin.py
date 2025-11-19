@@ -1,88 +1,54 @@
-# CÓDIGO CORRIGIDO PARA: sistema_os_crud-main/create_admin.py
-
+# CÓDIGO COMPLETO E ATUALIZADO PARA: sistema_os_crud-main/create_admin.py
 import os
 from sqlalchemy import create_engine, text
-import re
-import getpass 
+from auth import hash_password
 
-try:
-    from auth import hash_password
-except ImportError:
-    print("ERRO: Não foi possível encontrar o arquivo 'auth.py'.")
-    print("Certifique-se de que o arquivo 'auth.py' com a função 'hash_password' está na mesma pasta.")
-    exit()
-
-def validate_password(password):
-    """Valida se a senha tem min 8 chars, 1 maiúscula, 1 minúscula, 1 número, 1 especial."""
-    if len(password) < 8: return False, "A senha deve ter pelo menos 8 caracteres."
-    if not re.search(r"[A-Z]", password): return False, "A senha deve ter pelo menos uma letra maiúscula."
-    if not re.search(r"[a-z]", password): return False, "A senha deve ter pelo menos uma letra minúscula."
-    if not re.search(r"\d", password): return False, "A senha deve ter pelo menos um número."
-    if not re.search(r"[!@#$%^&*(),.?:{}|<>]", password): return False, "A senha deve ter pelo menos um caractere especial."
-    return True, ""
-
-def create_admin():
-    print("--- Assistente de Criação de Usuário Admin ---")
+def create_admin_user():
+    """Cria um usuário administrador padrão."""
     
-    ADMIN_USERNAME = input("Digite o nome de usuário para o novo admin (ex: admin): ")
-    if not ADMIN_USERNAME:
-        print("Nome de usuário não pode ser vazio.")
-        return
-
-    while True:
-        ADMIN_PASSWORD = getpass.getpass("Digite a senha para o novo admin: ")
-        PASSWORD_CONFIRM = getpass.getpass("Confirme a senha: ")
-
-        if ADMIN_PASSWORD != PASSWORD_CONFIRM:
-            print("\nAs senhas não coincidem. Tente novamente.")
-            continue
-
-        is_valid, message = validate_password(ADMIN_PASSWORD)
-        if not is_valid:
-            print(f"\nERRO: Senha inválida. {message}")
-            print("Tente novamente.")
-            continue
-        
-        break
-
-    # --- Configuração da Conexão com o Banco ---
     DB_HOST = os.getenv("DB_HOST", "localhost")
-    
-    # --- ESTA É A CORREÇÃO ---
-    # O banco de dados de desenvolvimento chama-se 'ordens_servico_dev'
-    DB_NAME = "ordens_servico_dev"
-    # --- FIM DA CORREÇÃO ---
-    
+    DB_NAME = os.getenv("DB_NAME", "ordens_servico")
     DB_USER = os.getenv("DB_USER", "postgres")
-    DB_PASSWORD = "1234" # A senha do seu 'db-dev'
-    DB_PORT = "5434" # A porta do 'docker-compose.dev.yml'
+    DB_PASSWORD = os.getenv("DB_PASSWORD", "1234")
     
-    db_engine_url = f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    db_engine_url = f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}/{DB_NAME}"
+    engine = create_engine(db_engine_url)
     
     try:
-        engine = create_engine(db_engine_url)
         with engine.connect() as con:
             with con.begin():
-                # Verifica se o usuário já existe
-                query_check = text("SELECT id FROM usuarios WHERE username = :username")
-                exists = con.execute(query_check, {"username": ADMIN_USERNAME}).fetchone()
+                # Verifica se já existe um admin
+                result = con.execute(text("SELECT id FROM usuarios WHERE role = 'admin'")).fetchone()
                 
-                if exists:
-                    print(f"\nERRO: Usuário '{ADMIN_USERNAME}' já existe. Nenhuma ação foi tomada.")
+                if result:
+                    print("⚠️  Já existe um usuário administrador no sistema.")
                     return
-
-                # Cria o novo usuário
-                hashed_pass = hash_password(ADMIN_PASSWORD)
-                query_insert = text("""
-                    INSERT INTO usuarios (username, password_hash, role)
-                    VALUES (:username, :password, 'admin')
+                
+                # Cria o usuário admin padrão
+                username = "admin"
+                password = "Admin@123"
+                display_name = "Administrador do Sistema"
+                password_hash = hash_password(password)
+                
+                query = text("""
+                    INSERT INTO usuarios (username, password_hash, role, display_name)
+                    VALUES (:username, :password_hash, :role, :display_name)
                 """)
-                con.execute(query_insert, {"username": ADMIN_USERNAME, "password": hashed_pass})
-                print(f"\n✅ Usuário admin '{ADMIN_USERNAME}' criado com sucesso!")
-
+                
+                con.execute(query, {
+                    "username": username,
+                    "password_hash": password_hash,
+                    "role": "admin",
+                    "display_name": display_name
+                })
+                
+                print("✅ Usuário administrador criado com sucesso!")
+                print(f"   Usuário: {username}")
+                print(f"   Senha: {password}")
+                print("   ⚠️  ALTERE A SENHA APÓS O PRIMEIRO LOGIN!")
+    
     except Exception as e:
-        print(f"\n❌ Falha ao criar usuário admin: {e}")
-        print("Verifique se o banco de dados está rodando (docker compose up -d) e se as credenciais no script estão corretas.")
+        print(f"❌ Erro ao criar usuário administrador: {e}")
 
 if __name__ == "__main__":
-    create_admin()
+    create_admin_user()

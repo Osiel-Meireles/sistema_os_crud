@@ -8,17 +8,16 @@ def migrate_schema():
     
     # --- ALTERAÇÃO AQUI ---
     # Lê as variáveis de ambiente do contêiner onde o script está rodando.
-    # Removemos os defaults ("localhost", "5434", etc.) que causaram o erro.
-    DB_HOST = os.getenv("DB_HOST")
-    DB_NAME = os.getenv("DB_NAME")
-    DB_USER = os.getenv("DB_USER")
-    DB_PASSWORD = os.getenv("DB_PASSWORD")
+    DB_HOST = os.getenv("DB_HOST")         # Será "db-dev"
+    DB_NAME = os.getenv("DB_NAME")         # Será "ordens_servico_dev"
+    DB_USER = os.getenv("DB_USER")         # Será "postgres"
+    DB_PASSWORD = os.getenv("DB_PASSWORD") # Será "1234"
     DB_PORT = "5432" # Na rede interna do Docker, a porta do Postgres é sempre 5432
 
     # Verifica se as variáveis foram carregadas
     if not all([DB_HOST, DB_NAME, DB_USER, DB_PASSWORD]):
         print("\n❌ ERRO: Variáveis de ambiente (DB_HOST, DB_NAME, etc.) não foram carregadas.")
-        print("Certifique-se de que o contêiner 'app' está rodando ('docker compose up -d').")
+        print("Certifique-se de que o contêiner 'app-dev' está rodando ('docker compose up -d').")
         return
     # --- FIM DA ALTERAÇÃO ---
 

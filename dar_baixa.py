@@ -1,199 +1,279 @@
-# CÓDIGO ATUALIZADO E COMPLETO PARA: sistema_os_crud-main/dar_baixa.py
-
+# CÓDIGO COMPLETO E CORRIGIDO PARA: sistema_os_crud-main/dar_baixa.py
 import streamlit as st
 import pandas as pd
 from database import get_connection
 from sqlalchemy import text
 from datetime import datetime
-import pytz 
+import pytz
 from config import STATUS_OPTIONS
 
-def render():
-    st.markdown("<h3 style='text-align: left;'>Atualizar Ordem de Serviço</h3>", unsafe_allow_html=True)
-    st.write("Busque uma OS para atualizar seu status ou para dar baixa (finalizar).")
-
-    numero_preenchido = st.session_state.get('numero_os_preenchido', None)
-    if numero_preenchido:
-        st.session_state.busca_os_input = numero_preenchido
-        del st.session_state.numero_os_preenchido 
+def f_buscar_os_para_baixa(conn, tipo_os, numero_os):
+    """Busca uma OS específica no banco de dados para dar baixa."""
+    if not numero_os:
+        st.error("O campo 'Número da OS' é obrigatório.")
+        return None
     
-    USER_ROLE = st.session_state.get('role', 'tecnico')
-    conn = get_connection()
-
-    tipo_os = st.selectbox("Selecione o tipo de OS", ["OS Interna", "OS Externa"])
-    numero_os_input = st.text_input(f"Digite o Número da {tipo_os}", key="busca_os_input")
-
-    if numero_os_input:
-        numero_os = numero_os_input
-        try:
-            with conn.connect() as con:
-                table_name = "os_interna" if tipo_os == "OS Interna" else "os_externa"
-                query = text(f"SELECT * FROM {table_name} WHERE numero = :numero")
-                os_df = pd.read_sql(query, con, params={"numero": numero_os})
-                if not os_df.empty:
-                    st.session_state['os_data'] = os_df.iloc[0].to_dict() 
-                else:
-                    st.warning(f"OS número {numero_os} não encontrada.")
-                    if 'os_data' in st.session_state:
-                        del st.session_state['os_data']
-        except Exception as e:
-            st.error(f"Ocorreu um erro ao buscar a OS: {e}")
-            if 'os_data' in st.session_state:
-                del st.session_state['os_data']
-    else:
-        if 'os_data' in st.session_state:
-            del st.session_state['os_data']
-
-    if 'os_data' in st.session_state:
-        os_data = st.session_state['os_data']
-        
-        st.markdown("#### Informações da OS Encontrada:")
-        st.dataframe(pd.DataFrame([os_data]))
-
-        current_status = os_data.get('status', 'EM ABERTO')
-        is_delivered = (current_status == "ENTREGUE AO CLIENTE")
-        can_register_retirada = current_status in ["AGUARDANDO RETIRADA", "ENTREGUE AO CLIENTE"]
-        is_awaiting_parts = (current_status == "AGUARDANDO PEÇA(S)")
-
-        # --- SEÇÃO DO LAUDO PDF (LEGADO) ---
-        # Mantém a exibição de PDFs antigos, se existirem
-        if os_data.get('laudo_pdf') is not None:
-            st.markdown("---")
-            st.markdown("#### Laudo Técnico (Anexo PDF Antigo)")
-            pdf_data = bytes(os_data['laudo_pdf']) if isinstance(os_data['laudo_pdf'], memoryview) else os_data['laudo_pdf']
-            st.download_button(
-                label=f"Baixar Laudo PDF ({os_data.get('laudo_filename')})",
-                data=pdf_data,
-                file_name=os_data.get('laudo_filename'),
-                mime="application/pdf"
-            )
-
-        # --- ALTERAÇÃO AQUI: Exibe os Laudos do Sistema ---
-        # Substitui a lógica de "Anexar Laudo"
-        if is_awaiting_parts:
-            st.markdown("---")
-            st.markdown("#### Laudos de Componentes Registrados")
-            
-            tipo_os_laudo = tipo_os # O tipo_os já é "OS Interna" ou "OS Externa"
-            numero_os = os_data.get('numero')
-
-            laudos_registrados = []
-            try:
-                query_laudos = text("SELECT * FROM laudos WHERE numero_os = :num AND tipo_os = :tipo ORDER BY id DESC")
-                with conn.connect() as con:
-                    results = con.execute(query_laudos, {"num": numero_os, "tipo": tipo_os_laudo}).fetchall()
-                    laudos_registrados = [r._mapping for r in results]
-            except Exception as e:
-                st.error(f"Erro ao buscar laudos de componentes: {e}")
-
-            if not laudos_registrados:
-                st.warning("Esta OS está 'Aguardando Peça(s)', mas nenhum laudo de componente foi encontrado no sistema.")
+    table_name = "os_interna" if tipo_os == "Interna" else "os_externa"
+    query = text(f"""
+        SELECT id, numero, secretaria, setor, equipamento, status, solicitante, 
+               patrimonio, categoria, tecnico, data, solicitacao_cliente
+        FROM {table_name}
+        WHERE numero = :numero
+    """)
+    
+    try:
+        with conn.connect() as con:
+            result = con.execute(query, {"numero": numero_os}).fetchone()
+            if result:
+                os_data = dict(result._mapping)
+                st.session_state.os_baixa_encontrada = os_data
+                st.session_state.os_baixa_encontrada['numero_os'] = numero_os
+                st.session_state.os_baixa_encontrada['tipo_os'] = tipo_os
+                return os_data
             else:
-                fuso_sp = pytz.timezone('America/Sao_Paulo')
-                for laudo in laudos_registrados:
-                    data_reg = laudo['data_registro'].astimezone(fuso_sp).strftime('%d/%m/%Y %H:%M')
-                    exp_title = f"Laudo ID {laudo['id']} - {laudo['componente']} (Status: {laudo['status']}) - Reg. {data_reg}"
-                    with st.expander(exp_title):
-                        st.markdown(f"**Técnico:** {laudo['tecnico']}")
-                        st.markdown("**Especificação:**")
-                        st.text_area(f"spec_{laudo['id']}", laudo['especificacao'], height=100, disabled=True, label_visibility="collapsed")
-                        if laudo['link_compra']:
-                            st.markdown(f"**Link:** [Link de Compra]({laudo['link_compra']})")
-                        if laudo['observacoes']:
-                            st.markdown("**Observações:**")
-                            st.text_area(f"obs_{laudo['id']}", laudo['observacoes'], height=80, disabled=True, label_visibility="collapsed")
-        # --- FIM DA ALTERAÇÃO ---
+                st.warning(f"OS {tipo_os} com número {numero_os} não encontrada.")
+                if 'os_baixa_encontrada' in st.session_state:
+                    del st.session_state.os_baixa_encontrada
+                return None
+    except Exception as e:
+        st.error(f"Erro ao buscar OS: {e}")
+        if 'os_baixa_encontrada' in st.session_state:
+            del st.session_state.os_baixa_encontrada
+        return None
 
-
-        if not is_delivered:
-            st.markdown("---")
-            with st.form("atualizar_os_form"):
-                st.markdown("#### Atualize o status da OS")
-                status_update_options = [s for s in STATUS_OPTIONS if s not in ["Todos", "AGUARDANDO RETIRADA", "ENTREGUE AO CLIENTE"]]
+def f_dar_baixa(conn, table_name, os_id, dados_baixa, role):
+    """Atualiza o status da OS para baixa/finalização."""
+    try:
+        with conn.connect() as con:
+            with con.begin():
+                # REGRA DE NEGÓCIO: Se técnico escolheu "FINALIZADO", muda para "AGUARDANDO RETIRADA"
+                if role == "tecnico" and dados_baixa.get("status") == "FINALIZADO":
+                    dados_baixa["status"] = "AGUARDANDO RETIRADA"
                 
-                # 'administrativo' e 'tecnico' não podem mexer se estiver aguardando peças
-                if USER_ROLE in ['tecnico', 'administrativo'] and current_status == "AGUARDANDO PEÇA(S)":
-                    st.info("A OS está aguardando peças. Apenas um administrador pode alterar este status.")
-                    st.form_submit_button("Salvar Alterações de Status", disabled=True)
-                else:
-                    try:
-                        status_index = status_update_options.index(current_status)
-                    except ValueError: status_index = 0
-                    
-                    novo_status = st.selectbox("Novo Status", status_update_options, index=status_index)
-                    texto_atualizacao = st.text_area("Serviço Executado / Descrição da Atualização", value=os_data.get('descricao') if current_status == "AGUARDANDO PEÇA(S)" else os_data.get('servico_executado', ''))
-                    
-                    submitted_update = st.form_submit_button("Salvar Alterações de Status")
-                    if submitted_update:
-                        if novo_status == "FINALIZADO" and not texto_atualizacao:
-                            st.error("Para finalizar, o campo 'Serviço Executado' é obrigatório.")
-                        else:
-                            params = {"numero": os_data['numero']}
-                            set_clauses = []
-                            if novo_status == "FINALIZADO":
-                                data_hora_finalizada_utc = datetime.now(pytz.utc)
-                                params.update({
-                                    "status": "AGUARDANDO RETIRADA", 
-                                    "servico_executado": texto_atualizacao, 
-                                    "data_finalizada": data_hora_finalizada_utc
-                                })
-                                set_clauses.extend(["status = :status", "servico_executado = :servico_executado", "data_finalizada = :data_finalizada"])
-                            else:
-                                params.update({
-                                    "status": novo_status, 
-                                    "descricao": texto_atualizacao
-                                })
-                                set_clauses.extend(["status = :status", "descricao = :descricao"])
-                            try:
-                                with conn.connect() as con:
-                                    table_name = "os_interna" if tipo_os == "OS Interna" else "os_externa"
-                                    update_query = text(f"UPDATE {table_name} SET {', '.join(set_clauses)} WHERE numero = :numero")
-                                    con.execute(update_query, params)
-                                    con.commit()
-                                    st.success(f"Status da OS {os_data['numero']} atualizado! Recarregando...")
-                                    del st.session_state['os_data']
-                                    st.rerun()
-                            except Exception as e:
-                                st.error(f"Ocorreu um erro ao atualizar a OS: {e}")
-
-        # Seção de "Registrar Entrega" (Apenas 'administrativo')
-        if can_register_retirada and USER_ROLE == 'administrativo':
-            if not is_delivered:
-                st.markdown("---")
-                st.markdown(f"#### Registrar Entrega ao Cliente ({USER_ROLE.capitalize()})")
-                retirada_por = st.text_input("Nome de quem está retirando", value=os_data.get('retirada_por') or '', key="retirada_input")
+                # Construir query UPDATE
+                set_clause = []
+                params = {"id": os_id}
+                for key, value in dados_baixa.items():
+                    if key != "id":
+                        set_clause.append(f"{key} = :{key}")
+                        params[key] = value
                 
-                if st.button("Confirmar Entrega", type="primary"):
-                    if not retirada_por:
-                        st.error("O campo 'Nome de quem está retirando' é obrigatório.")
-                    else:
-                        try:
-                            data_hora_retirada_utc = datetime.now(pytz.utc)
-                            with conn.connect() as con:
-                                with con.begin():
-                                    table_name_os = "os_interna" if tipo_os == "OS Interna" else "os_externa"
-                                    update_query_os = text(f"""
-                                        UPDATE {table_name_os}
-                                        SET status = :status, 
-                                            data_finalizada = COALESCE(data_finalizada, :data_retirada),
-                                            data_retirada = :data_retirada,
-                                            retirada_por = :retirada_por
-                                        WHERE numero = :numero
-                                    """)
-                                    con.execute(update_query_os, {
-                                        "numero": os_data['numero'], 
-                                        "status": "ENTREGUE AO CLIENTE",
-                                        "data_retirada": data_hora_retirada_utc,
-                                        "retirada_por": retirada_por,
-                                    })
-                            st.success(f"Retirada da OS {os_data['numero']} registrada com sucesso! Recarregando...")
-                            del st.session_state['os_data']
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Ocorreu um erro ao registrar a retirada: {e}")
+                if not set_clause:
+                    st.error("Nenhum dado para atualizar.")
+                    return False
+                
+                query = text(f"UPDATE {table_name} SET {', '.join(set_clause)} WHERE id = :id")
+                con.execute(query, params)
         
-        elif can_register_retirada and USER_ROLE in ['tecnico', 'admin']:
-             st.info("Serviço finalizado e aguardando retirada. Apenas um usuário 'Administrativo' pode registrar a entrega ao cliente.")
+        # Mensagem baseada no perfil
+        if role == "tecnico":
+            st.success("OS finalizada! Status alterado para 'AGUARDANDO RETIRADA'")
+        else:
+            st.success(f"Baixa registrada com sucesso!")
+        return True
+    except Exception as e:
+        st.error(f"Erro ao registrar baixa: {e}")
+        return False
 
-        if is_delivered:
-            st.success("Esta OS já foi finalizada e entregue ao cliente. Nenhuma outra alteração pode ser feita.")
+def render():
+    st.title("Dar Baixa - Finalizar Ordem de Serviço")
+    
+    conn = get_connection()
+    role = st.session_state.get('role', '')
+    
+    # Verificar se veio de Minhas Tarefas com OS pré-selecionada
+    baixa_os_id = st.session_state.get('baixa_os_id')
+    baixa_os_numero = st.session_state.get('baixa_os_numero')
+    baixa_os_tipo = st.session_state.get('baixa_os_tipo', 'Interna')
+    
+    st.markdown("---")
+    
+    # Exibir informação de permissões
+    if role == "tecnico":
+        st.info("Como técnico, você pode finalizar a OS. O status será automaticamente alterado para 'AGUARDANDO RETIRADA'.")
+    elif role in ["admin", "administrativo"]:
+        st.info("Como administrador, você pode registrar a retirada e informar quem retirou o equipamento.")
+    
+    st.markdown("---")
+    
+    # Seção de pesquisa/seleção de OS
+    st.markdown("### Selecionar Ordem de Serviço para Baixa")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        tipo_os_options = ["Interna", "Externa"]
+        tipo_os_index = tipo_os_options.index(baixa_os_tipo) if baixa_os_tipo in tipo_os_options else 0
+        
+        tipo_os = st.selectbox(
+            "Tipo de OS",
+            tipo_os_options,
+            index=tipo_os_index,
+            key="select_tipo_os_baixa"
+        )
+    
+    with col2:
+        numero_os = st.text_input(
+            "Número da OS",
+            value=baixa_os_numero if baixa_os_numero else "",
+            placeholder="Ex: 1-25",
+            key="input_numero_os_baixa"
+        )
+    
+    # Se veio de Minhas Tarefas, já buscar automaticamente
+    if baixa_os_id and baixa_os_numero and 'os_baixa_encontrada' not in st.session_state:
+        f_buscar_os_para_baixa(conn, tipo_os, baixa_os_numero)
+    
+    if st.button("Buscar OS", use_container_width=True):
+        f_buscar_os_para_baixa(conn, tipo_os, numero_os)
+    
+    os_encontrada = st.session_state.get('os_baixa_encontrada')
+    
+    if os_encontrada:
+        # Validação: Se é técnico, só pode dar baixa em suas próprias OS
+        display_name = st.session_state.get('display_name', '')
+        if role == "tecnico" and os_encontrada.get('tecnico') != display_name:
+            st.error("Você só pode dar baixa em suas próprias Ordens de Serviço.")
+            st.warning(f"Esta OS está atribuída a: {os_encontrada.get('tecnico')}")
+            st.session_state.pop('os_baixa_encontrada', None)
+            return
+        
+        st.markdown("---")
+        st.success("OS Encontrada para Dar Baixa!")
+        
+        # Exibir informações da OS
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Número", os_encontrada.get('numero_os', 'N/A'))
+        with col2:
+            st.metric("Tipo", os_encontrada.get('tipo_os', 'N/A'))
+        with col3:
+            st.metric("Status Atual", os_encontrada.get('status', 'N/A'))
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write(f"**Secretaria:** {os_encontrada.get('secretaria', 'N/A')}")
+            st.write(f"**Setor:** {os_encontrada.get('setor', 'N/A')}")
+            st.write(f"**Técnico:** {os_encontrada.get('tecnico', 'N/A')}")
+        with col2:
+            st.write(f"**Equipamento:** {os_encontrada.get('equipamento', 'N/A')}")
+            st.write(f"**Patrimônio:** {os_encontrada.get('patrimonio', 'N/A')}")
+            st.write(f"**Solicitante:** {os_encontrada.get('solicitante', 'N/A')}")
+        
+        # Formatar data
+        data_formatada = "N/A"
+        if pd.notna(os_encontrada.get('data')):
+            try:
+                data_formatada = pd.to_datetime(os_encontrada.get('data')).strftime("%d/%m/%Y")
+            except:
+                data_formatada = str(os_encontrada.get('data'))
+        
+        st.write(f"**Data da OS:** {data_formatada}")
+        
+        if os_encontrada.get('solicitacao_cliente'):
+            st.markdown("**Solicitação do Cliente:**")
+            st.text(str(os_encontrada.get('solicitacao_cliente')))
+        
+        st.markdown("---")
+        st.markdown("### Registrar Baixa da OS")
+        
+        with st.form("form_dar_baixa"):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # REGRA: Técnicos podem apenas finalizar
+                if role == "tecnico":
+                    status_options = ["FINALIZADO"]
+                    status_novo = st.selectbox(
+                        "Novo Status *",
+                        status_options,
+                        key="select_status_baixa_tecnico"
+                    )
+                    st.caption("Técnico: Ao salvar, o status será automaticamente alterado para 'AGUARDANDO RETIRADA'")
+                else:
+                    # Admin/Administrativo podem escolher qualquer status
+                    status_novo = st.selectbox(
+                        "Novo Status *",
+                        STATUS_OPTIONS,
+                        index=STATUS_OPTIONS.index(os_encontrada.get('status', 'EM ABERTO')) if os_encontrada.get('status') in STATUS_OPTIONS else 0,
+                        key="select_status_baixa_admin"
+                    )
+            
+            with col2:
+                data_finalizacao = st.date_input(
+                    "Data de Finalização *",
+                    value=datetime.now().date(),
+                    key="date_finalizacao_baixa"
+                )
+            
+            observacoes_finalizacao = st.text_area(
+                "Observações da Finalização",
+                height=150,
+                placeholder="Descreva observações sobre a finalização da OS...",
+                key="textarea_obs_baixa"
+            )
+            
+            # REGRA: Apenas admin/administrativo podem registrar retirada
+            if role in ["admin", "administrativo"]:
+                st.divider()
+                st.markdown("#### Registro de Retirada (Apenas Admin/Administrativo)")
+                
+                retirada_por = st.text_input(
+                    "Retirado por (Nome de quem retirou o equipamento) *",
+                    placeholder="Nome completo da pessoa que retirou",
+                    key="input_retirada_por"
+                )
+                
+                data_retirada = st.date_input(
+                    "Data da Retirada",
+                    value=datetime.now().date(),
+                    key="date_retirada"
+                )
+            else:
+                # Técnicos não veem campo de retirada
+                retirada_por = None
+                st.info("O registro de retirada será preenchido apenas por administradores.")
+            
+            submitted = st.form_submit_button("Registrar Baixa", use_container_width=True, type="primary")
+            
+            if submitted:
+                # Validações
+                if not status_novo or not data_finalizacao:
+                    st.error("Preencha todos os campos obrigatórios (marcados com *).")
+                elif role in ["admin", "administrativo"] and not retirada_por:
+                    st.error("Como administrador, você deve informar quem retirou o equipamento.")
+                else:
+                    # Determinar tabela baseado no tipo
+                    table_name = "os_interna" if os_encontrada.get('tipo_os') == "Interna" else "os_externa"
+                    
+                    dados_baixa = {
+                        "status": status_novo,
+                        "data_finalizada": data_finalizacao if data_finalizacao else None,
+                        "descricao": observacoes_finalizacao if observacoes_finalizacao else None,
+                    }
+                    
+                    # Adicionar retirada_por apenas se for admin/administrativo
+                    if role in ["admin", "administrativo"] and retirada_por:
+                        dados_baixa["retirada_por"] = retirada_por
+                    
+                    if f_dar_baixa(conn, table_name, os_encontrada.get('id'), dados_baixa, role):
+                        # Limpar estado e voltar
+                        st.session_state.baixa_os_id = None
+                        st.session_state.baixa_os_numero = None
+                        st.session_state.baixa_os_tipo = None
+                        if 'os_baixa_encontrada' in st.session_state:
+                            del st.session_state.os_baixa_encontrada
+                        st.session_state.current_page = "Minhas Tarefas"
+                        st.rerun()
+    else:
+        st.info("Busque por uma OS para registrar a baixa.")
+    
+    st.markdown("---")
+    
+    if st.button("Voltar para Minhas Tarefas"):
+        st.session_state.baixa_os_id = None
+        st.session_state.baixa_os_numero = None
+        st.session_state.baixa_os_tipo = None
+        if 'os_baixa_encontrada' in st.session_state:
+            del st.session_state.os_baixa_encontrada
+        st.session_state.current_page = "Minhas Tarefas"
+        st.rerun()
