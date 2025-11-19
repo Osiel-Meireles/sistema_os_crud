@@ -1,5 +1,5 @@
 # CÓDIGO COMPLETO E ATUALIZADO PARA: sistema_os_crud-main/minhas_tarefas.py
-# Versão com paginação integrada
+# Versão com redirecionamento para Dar Baixa
 
 import streamlit as st
 import pandas as pd
@@ -9,33 +9,6 @@ from config import STATUS_OPTIONS, CATEGORIAS, EQUIPAMENTOS
 from datetime import datetime
 import pytz
 import math
-
-def f_atualizar_os_tecnico(conn, os_id, os_tipo, dados_atualizacao):
-    """Atualiza uma OS específica (apenas campos permitidos para técnicos)."""
-    table_name = "os_interna" if os_tipo == "Interna" else "os_externa"
-    
-    try:
-        with conn.connect() as con:
-            with con.begin():
-                set_clause = []
-                params = {"id": os_id}
-                
-                for key, value in dados_atualizacao.items():
-                    if key != "id":
-                        set_clause.append(f"{key} = :{key}")
-                        params[key] = value
-                
-                if not set_clause:
-                    st.error("Nenhum dado para atualizar.")
-                    return False
-                
-                query = text(f"UPDATE {table_name} SET {', '.join(set_clause)} WHERE id = :id")
-                con.execute(query, params)
-                st.success(f"Ordem de Serviço atualizada com sucesso!")
-                return True
-    except Exception as e:
-        st.error(f"Erro ao atualizar OS: {e}")
-        return False
 
 def buscar_tarefas_tecnico(conn, display_name):
     """Busca todas as OSs atribuídas ao técnico logado."""
@@ -216,7 +189,7 @@ def display_expandable_card(row, idx, display_name):
             disabled=True,
             height=100,
             label_visibility="collapsed",
-            key=f"solicitacao_{card_key}"  # ✅ KEY ÚNICA
+            key=f"solicitacao_{card_key}"
         )
         
         # Serviço Executado / Descrição
@@ -228,7 +201,7 @@ def display_expandable_card(row, idx, display_name):
             disabled=True,
             height=100,
             label_visibility="collapsed",
-            key=f"servico_{card_key}"  # ✅ KEY ÚNICA
+            key=f"servico_{card_key}"
         )
         
         st.markdown("---")
@@ -240,18 +213,20 @@ def display_expandable_card(row, idx, display_name):
             if st.button(
                 "Atualizar/Finalizar OS",
                 use_container_width=True,
-                key=f"btn_atualizar_{card_key}",  # ✅ KEY ÚNICA
+                key=f"btn_atualizar_{card_key}",
                 type="primary"
             ):
-                st.session_state.os_para_atualizar = row.to_dict()
-                st.session_state.os_para_atualizar_idx = idx
+                # Armazenar dados da OS para busca automática em Dar Baixa
+                st.session_state.dar_baixa_auto_numero = row.get('numero')
+                st.session_state.dar_baixa_auto_tipo = row.get('tipo')
+                st.session_state.current_page = "Dar Baixa"
                 st.rerun()
         
         with col2:
             if st.button(
                 "Registrar Laudo para esta OS",
                 use_container_width=True,
-                key=f"btn_laudo_{card_key}"  # ✅ KEY ÚNICA
+                key=f"btn_laudo_{card_key}"
             ):
                 # Preparar dados para página de laudos
                 st.session_state.laudo_os_id = row.get('id')
@@ -260,96 +235,6 @@ def display_expandable_card(row, idx, display_name):
                 st.session_state.laudo_tecnico = display_name
                 st.session_state.current_page = "Laudos"
                 st.rerun()
-
-def render_modal_atualizar_os(conn, display_name):
-    """Renderiza modal para atualizar/finalizar OS."""
-    if 'os_para_atualizar' not in st.session_state or st.session_state.os_para_atualizar is None:
-        return
-    
-    os_data = st.session_state.os_para_atualizar
-    
-    @st.dialog("Atualizar/Finalizar Ordem de Serviço", width="large")
-    def show_modal():
-        st.markdown(f"### Atualizando OS #{os_data.get('numero', 'N/A')}")
-        st.markdown(f"**Tipo:** {os_data.get('tipo')} | **Status Atual:** {os_data.get('status', 'N/A')}")
-        st.markdown("---")
-        
-        with st.form("form_atualizar_os_tecnico"):
-            # Status
-            status_atual = os_data.get('status', 'EM ABERTO')
-            if status_atual == "EM ABERTO":
-                opcoes_status = ["EM ABERTO", "AGUARDANDO PEÇA(S)"]
-            elif status_atual == "AGUARDANDO PEÇA(S)":
-                opcoes_status = ["AGUARDANDO PEÇA(S)", "AGUARDANDO RETIRADA"]
-            else:
-                opcoes_status = [status_atual]
-            
-            status = st.selectbox(
-                "Status *",
-                opcoes_status,
-                index=0
-            )
-            
-            st.info("ℹ️ Técnicos podem alterar status de 'EM ABERTO' para 'AGUARDANDO PEÇA(S)' ou finalizar para 'AGUARDANDO RETIRADA'.")
-            
-            # Serviço Executado
-            st.markdown("#### Descrição do Serviço")
-            servico_executado = st.text_area(
-                "Serviço Executado *",
-                value=os_data.get('servico_executado', ''),
-                height=150,
-                placeholder="Descreva o serviço realizado...",
-                key="text_servico_executado"
-            )
-            
-            st.markdown("---")
-            
-            col1, col2 = st.columns(2)
-            
-            submitted = col1.form_submit_button(
-                "Salvar Alterações",
-                use_container_width=True,
-                type="primary"
-            )
-            
-            cancelar = col2.form_submit_button(
-                "Cancelar",
-                use_container_width=True
-            )
-            
-            if submitted:
-                if not servico_executado:
-                    st.error("O campo 'Serviço Executado' é obrigatório.")
-                else:
-                    # Preparar dados para atualização
-                    dados_atualizacao = {
-                        "status": status,
-                        "servico_executado": servico_executado
-                    }
-                    
-                    # Se estiver finalizando, adicionar data de finalização
-                    if status == "AGUARDANDO RETIRADA":
-                        dados_atualizacao["status"] = "AGUARDANDO RETIRADA"
-                        dados_atualizacao["data_finalizada"] = datetime.now(pytz.timezone('America/Sao_Paulo'))
-                    
-                    if f_atualizar_os_tecnico(
-                        conn,
-                        os_data.get('id'),
-                        os_data.get('tipo'),
-                        dados_atualizacao
-                    ):
-                        del st.session_state.os_para_atualizar
-                        if 'os_para_atualizar_idx' in st.session_state:
-                            del st.session_state.os_para_atualizar_idx
-                        st.rerun()
-            
-            if cancelar:
-                del st.session_state.os_para_atualizar
-                if 'os_para_atualizar_idx' in st.session_state:
-                    del st.session_state.os_para_atualizar_idx
-                st.rerun()
-    
-    show_modal()
 
 def render_pagination_controls(page_var_name, total_pages):
     """Renderiza controles de paginação reutilizáveis."""
@@ -387,9 +272,6 @@ def render():
     
     conn = get_connection()
     display_name = st.session_state.get("display_name", st.session_state.get("username", ""))
-    
-    # Renderizar modal de atualização se necessário
-    render_modal_atualizar_os(conn, display_name)
     
     # Buscar estatísticas
     total_abertas = contar_os_abertas(conn, display_name)
@@ -455,7 +337,6 @@ def render():
             
             # Exibir cards da página atual
             for idx_real, (idx, row) in enumerate(df_page.iterrows()):
-                # Usar índice da página original para manter consistência
                 display_expandable_card(row, idx, display_name)
             
             # Controles de paginação
