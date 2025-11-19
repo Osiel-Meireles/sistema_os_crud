@@ -40,9 +40,9 @@ def initialize_database():
                 raise
 
 def show_login_page():
-    st.set_page_config(page_title="Sistema de Registro de OS - 3iAtlas", page_icon="🔐", layout="centered")
+    st.set_page_config(page_title="Sistema de Registro de OS - PMLEM", page_icon="🔐", layout="centered")
     
-    st.title("Login - Sistema de Registro de OS - 3iAtlas")
+    st.title("Login - Sistema de Registro de OS - PMLEM")
     
     with st.form("login_form"):
         username = st.text_input("Usuário", placeholder="Digite seu usuário")
