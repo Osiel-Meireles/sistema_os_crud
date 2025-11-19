@@ -1,10 +1,15 @@
-# CÓDIGO COMPLETO PARA: sistema_os_crud-main/filtro.py
+# CÓDIGO COMPLETO E ATUALIZADO PARA: sistema_os_crud-main/filtro.py
+
 import streamlit as st
 import pandas as pd
 from database import get_connection
 from sqlalchemy import text
 from config import (
-    SECRETARIAS, TECNICOS, STATUS_OPTIONS, EQUIPAMENTOS, CATEGORIAS
+    SECRETARIAS, 
+    TECNICOS, 
+    STATUS_OPTIONS, 
+    EQUIPAMENTOS, 
+    CATEGORIAS
 )
 from import_export import exportar_filtrados_para_excel
 import base64
@@ -20,10 +25,36 @@ def f_deletar_os(conn, os_id, os_type):
             with con.begin():
                 query = text(f"DELETE FROM {table_name} WHERE id = :id")
                 con.execute(query, {"id": os_id})
-        st.success(f"OS (ID: {os_id}) deletada com sucesso.")
-        return True
+                st.success(f"OS (ID: {os_id}) deletada com sucesso.")
+                return True
     except Exception as e:
         st.error(f"Erro ao deletar OS: {e}")
+        return False
+
+def f_atualizar_os(conn, table_name, os_id, dados):
+    """Atualiza uma OS específica no banco de dados."""
+    try:
+        with conn.connect() as con:
+            with con.begin():
+                # Construir query UPDATE dinamicamente
+                set_clause = []
+                params = {"id": os_id}
+                
+                for key, value in dados.items():
+                    if key != "id":
+                        set_clause.append(f"{key} = :{key}")
+                        params[key] = value
+                
+                if not set_clause:
+                    st.error("Nenhum dado para atualizar.")
+                    return False
+                
+                query = text(f"UPDATE {table_name} SET {', '.join(set_clause)} WHERE id = :id")
+                con.execute(query, params)
+                st.success(f"Ordem de Serviço (ID: {os_id}) atualizada com sucesso!")
+                return True
+    except Exception as e:
+        st.error(f"Erro ao atualizar OS: {e}")
         return False
 
 def display_os_details(os_data):
@@ -53,31 +84,37 @@ def display_os_details(os_data):
     for col, label in col_map.items():
         if col in os_data and pd.notna(os_data[col]):
             value = os_data[col]
+            
             if col == 'data' and value:
                 try:
                     value = pd.to_datetime(value).strftime('%d/%m/%Y')
                 except (ValueError, TypeError):
                     pass
+            
             if col == 'hora' and value:
                 try:
                     value = pd.to_datetime(str(value)).strftime('%H:%M:%S')
                 except (ValueError, TypeError):
                     pass
+                    
             if col in ['data_finalizada', 'data_retirada'] and value:
                 try:
                     value = pd.to_datetime(value, utc=True).tz_convert('America/Sao_Paulo').strftime('%d/%m/%Y %H:%M:%S')
                 except (ValueError, TypeError):
                     pass
+            
             display_data.append([f"**{label}**", value])
     
     st.table(pd.DataFrame(display_data, columns=["Campo", "Valor"]))
     
     st.markdown("**Solicitação do Cliente:**")
-    st.text_area("solicitacao_exp", value=os_data.get('solicitacao_cliente', '') or "", disabled=True, label_visibility="collapsed", height=100)
+    st.text_area("solicitacao_exp", value=os_data.get('solicitacao_cliente', '') or "", 
+                 disabled=True, label_visibility="collapsed", height=100)
     
     st.markdown("**Serviço Executado / Descrição:**")
     texto_completo = f"{os_data.get('servico_executado', '') or ''}\n{os_data.get('descricao', '') or ''}".strip()
-    st.text_area("servico_exp", value=texto_completo, disabled=True, label_visibility="collapsed", height=100)
+    st.text_area("servico_exp", value=texto_completo, disabled=True, 
+                 label_visibility="collapsed", height=100)
     
     if os_data.get('status') == 'ENTREGUE AO CLIENTE':
         st.markdown("---")
@@ -98,6 +135,7 @@ def display_os_details(os_data):
         )
 
 def render_modal_detalhes_os(conn):
+    """Renderiza o modal de detalhes da OS."""
     if 'view_os_id' not in st.session_state or st.session_state.view_os_id is None:
         return
     
@@ -144,11 +182,13 @@ def render_modal_detalhes_os(conn):
                     st.markdown(f"**Estado de Conservação:** {laudo.get('estado_conservacao')}")
                     st.markdown(f"**Equipamento Completo:** {laudo.get('equipamento_completo')}")
                     st.markdown("**Diagnóstico:**")
-                    st.text_area(f"diag_{laudo['id']}", laudo.get('diagnostico', ''), height=100, disabled=True, label_visibility="collapsed")
+                    st.text_area(f"diag_{laudo['id']}", laudo.get('diagnostico', ''), 
+                                height=100, disabled=True, label_visibility="collapsed")
                     
                     if laudo.get('observacoes'):
                         st.markdown("**Observações:**")
-                        st.text_area(f"obs_{laudo['id']}", laudo['observacoes'], height=80, disabled=True, label_visibility="collapsed")
+                        st.text_area(f"obs_{laudo['id']}", laudo['observacoes'], 
+                                    height=80, disabled=True, label_visibility="collapsed")
         
         st.markdown("---")
         if st.button("Fechar Detalhes", use_container_width=True, key="close_modal_filter"):
@@ -157,7 +197,125 @@ def render_modal_detalhes_os(conn):
     
     show_modal()
 
+def render_modal_editar_os(conn):
+    """Renderiza o modal de edição da OS."""
+    if 'edit_os_data' not in st.session_state or st.session_state.edit_os_data is None:
+        return
+    
+    os_data = st.session_state.edit_os_data
+    os_tipo = os_data.get('tipo')
+    table_name = "os_interna" if os_tipo == "Interna" else "os_externa"
+    
+    @st.dialog("Editar Ordem de Serviço", width="large")
+    def show_modal():
+        st.markdown(f"### Editando OS #{os_data.get('numero', 'N/A')}")
+        st.markdown(f"**Tipo:** {os_tipo} | **Status Atual:** {os_data.get('status', 'N/A')}")
+        st.markdown("---")
+        
+        # Formulário de edição
+        with st.form("form_editar_os"):
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                status = st.selectbox(
+                    "Status *",
+                    STATUS_OPTIONS,
+                    index=STATUS_OPTIONS.index(os_data.get('status', 'EM ABERTO')) if os_data.get('status') in STATUS_OPTIONS else 0
+                )
+            
+            with col2:
+                secretaria = st.selectbox(
+                    "Secretaria *",
+                    sorted(SECRETARIAS),
+                    index=sorted(SECRETARIAS).index(os_data.get('secretaria')) if os_data.get('secretaria') in sorted(SECRETARIAS) else 0
+                )
+            
+            with col3:
+                setor = st.text_input(
+                    "Setor",
+                    value=os_data.get('setor', ''),
+                    placeholder="Ex: TI, Administrativo"
+                )
+            
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                tecnico = st.selectbox(
+                    "Técnico *",
+                    sorted(TECNICOS),
+                    index=sorted(TECNICOS).index(os_data.get('tecnico')) if os_data.get('tecnico') in sorted(TECNICOS) else 0
+                )
+            
+            with col2:
+                equipamento = st.text_input(
+                    "Equipamento",
+                    value=os_data.get('equipamento', ''),
+                    placeholder="Ex: Desktop, Impressora"
+                )
+            
+            with col3:
+                patrimonio = st.text_input(
+                    "Patrimônio",
+                    value=os_data.get('patrimonio', ''),
+                    placeholder="Ex: PA-2024-001"
+                )
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                categoria = st.selectbox(
+                    "Categoria",
+                    [''] + sorted(CATEGORIAS),
+                    index=([''] + sorted(CATEGORIAS)).index(os_data.get('categoria', '')) if os_data.get('categoria') else 0
+                )
+            
+            with col2:
+                data_finalizada = st.date_input(
+                    "Data de Finalização",
+                    value=pd.to_datetime(os_data.get('data_finalizada')).date() if pd.notna(os_data.get('data_finalizada')) else None
+                )
+            
+            st.markdown("#### Descrição do Serviço")
+            servico_executado = st.text_area(
+                "Serviço Executado",
+                value=os_data.get('servico_executado', ''),
+                height=150,
+                placeholder="Descreva o serviço realizado..."
+            )
+            
+            submitted = st.form_submit_button("Salvar Alterações", use_container_width=True, type="primary")
+            
+            if submitted:
+                if not secretaria or not tecnico or not status:
+                    st.error("Preencha todos os campos obrigatórios (marcados com *).")
+                else:
+                    dados_atualizacao = {
+                        "status": status,
+                        "secretaria": secretaria,
+                        "setor": setor if setor else None,
+                        "tecnico": tecnico,
+                        "equipamento": equipamento if equipamento else None,
+                        "patrimonio": patrimonio if patrimonio else None,
+                        "categoria": categoria if categoria else None,
+                        "servico_executado": servico_executado if servico_executado else None,
+                        "data_finalizada": data_finalizada if data_finalizada else None,
+                    }
+                    
+                    if f_atualizar_os(conn, table_name, os_data.get('id'), dados_atualizacao):
+                        # Limpar estado e recarregar
+                        del st.session_state.edit_os_data
+                        st.session_state.df_filtrado = pd.DataFrame()  # Força recarga dos dados
+                        st.rerun()
+        
+        st.markdown("---")
+        if st.button("Cancelar", use_container_width=True):
+            del st.session_state.edit_os_data
+            st.rerun()
+    
+    show_modal()
+
 def render_modal_delete_os(conn):
+    """Renderiza o modal de confirmação de deleção."""
     if 'delete_os_data' not in st.session_state or st.session_state.delete_os_data is None:
         return
     
@@ -173,6 +331,7 @@ def render_modal_delete_os(conn):
         st.markdown("---")
         
         col1, col2 = st.columns(2)
+        
         if col1.button("Confirmar Exclusão", type="primary", use_container_width=True):
             if f_deletar_os(conn, data.get('id'), data.get('tipo')):
                 del st.session_state.delete_os_data
@@ -187,20 +346,27 @@ def render_modal_delete_os(conn):
 
 def render():
     st.markdown("## Filtro de Ordens de Serviço")
+    
     conn = get_connection()
     role = st.session_state.get("role", "")
     
-    # Verificar permissão para deletar
+    # Verificar permissões
+    pode_editar = role in ["admin", "administrativo"]
     pode_deletar = role in ["admin", "administrativo"]
     
+    # Renderizar modais
     render_modal_detalhes_os(conn)
     
-    # Só mostrar modal de deleção se usuário tem permissão
+    if pode_editar:
+        render_modal_editar_os(conn)
+    
     if pode_deletar:
         render_modal_delete_os(conn)
     
+    # Filtros
     with st.expander("Filtros de Pesquisa", expanded=True):
         col1, col2 = st.columns(2)
+        
         with col1:
             f_tipo = st.selectbox("Tipo de OS", ["Todos", "Interna", "Externa"])
             f_status = st.multiselect("Status", STATUS_OPTIONS)
@@ -212,13 +378,16 @@ def render():
             f_equipamento = st.multiselect("Equipamento", EQUIPAMENTOS)
         
         col_data1, col_data2 = st.columns(2)
+        
         with col_data1:
             f_data_inicio = st.date_input("Data Inicial")
+        
         with col_data2:
             f_data_fim = st.date_input("Data Final")
         
         filtrar = st.button("Aplicar Filtros", use_container_width=True, type="primary")
     
+    # Executar filtro
     if filtrar or 'df_filtrado' in st.session_state:
         if filtrar:
             where_clauses = []
@@ -290,9 +459,8 @@ def render():
                     rows = result.fetchall()
                     columns = result.keys()
                     df = pd.DataFrame(rows, columns=columns)
-                
-                st.session_state.df_filtrado = df
-                st.session_state.filtro_page = 1  # CORRIGIDO: usa filtro_page ao invés de current_page
+                    st.session_state.df_filtrado = df
+                    st.session_state.filtro_page = 1
             except Exception as e:
                 st.error(f"Erro ao executar filtro: {e}")
                 st.exception(e)
@@ -306,6 +474,7 @@ def render():
         
         st.success(f"**{len(df)} OS(s) encontrada(s)**")
         
+        # Exportar para Excel
         if len(df) > 0:
             excel_data = exportar_filtrados_para_excel(df)
             if excel_data:
@@ -313,7 +482,7 @@ def render():
                 href = f'<a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}" download="os_filtradas.xlsx">Baixar Excel</a>'
                 st.markdown(href, unsafe_allow_html=True)
         
-        # PAGINAÇÃO CORRIGIDA
+        # Paginação
         if 'filtro_page' not in st.session_state:
             st.session_state.filtro_page = 1
         
@@ -333,58 +502,98 @@ def render():
         st.markdown("---")
         st.info(f"Exibindo **{len(df_page)}** de **{total_items}** OS (Página {st.session_state.filtro_page}/{total_pages})")
         
-        cols_header = st.columns((1, 1, 1.5, 1.5, 1, 1.5, 1.5))
-        headers = ["Número", "Tipo", "Secretaria", "Solicitante", "Status", "Data", "Ações"]
+        # Cabeçalho da tabela
+        if pode_editar:
+            cols_header = st.columns((1, 1, 1.5, 1.5, 1, 1.5, 2))
+            headers = ["Número", "Tipo", "Secretaria", "Solicitante", "Status", "Data", "Ações"]
+        else:
+            cols_header = st.columns((1, 1, 1.5, 1.5, 1, 1.5, 1))
+            headers = ["Número", "Tipo", "Secretaria", "Solicitante", "Status", "Data", "Ações"]
         
         for col, header in zip(cols_header, headers):
             col.markdown(f"**{header}**")
         
-        st.markdown("<hr style='margin-top: 0; margin-bottom: 0;'>", unsafe_allow_html=True)
-        
-        for idx, row in df_page.iterrows():
-            cols_row = st.columns((1, 1, 1.5, 1.5, 1, 1.5, 1.5))
-            
-            cols_row[0].write(str(row.get('numero', 'N/A')))
-            cols_row[1].write(str(row.get('tipo', 'N/A')))
-            cols_row[2].write(str(row.get('secretaria', 'N/A')))
-            cols_row[3].write(str(row.get('solicitante', 'N/A')))
-            cols_row[4].write(str(row.get('status', 'N/A')))
-            
-            data_valor = row.get('data')
-            if pd.notna(data_valor):
-                try:
-                    data_formatada = pd.to_datetime(data_valor).strftime('%d/%m/%Y')
-                    cols_row[5].write(data_formatada)
-                except:
-                    cols_row[5].write(str(data_valor))
-            else:
-                cols_row[5].write('N/A')
-            
-            action_col = cols_row[6]
-            col_b1, col_b2 = action_col.columns(2)
-            
-            if col_b1.button("👁️", key=f"view_{idx}", use_container_width=True, help="Visualizar"):
-                st.session_state.view_os_id = idx
-                st.rerun()
-            
-            # Só mostrar botão deletar se tem permissão
-            if pode_deletar:
-                if col_b2.button("🗑️", key=f"del_{idx}", use_container_width=True, type="secondary", help="Deletar"):
-                    st.session_state.delete_os_data = dict(row)
-                    st.rerun()
-            
-            st.markdown("<hr style='margin-top: 0; margin-bottom: 0;'>", unsafe_allow_html=True)
-        
         st.markdown("---")
-        if total_pages > 1:
-            col_nav1, col_nav2, col_nav3 = st.columns([1, 1, 1])
+        
+        # Renderizar linhas
+        for idx, row in df_page.iterrows():
+            if pode_editar:
+                cols = st.columns((1, 1, 1.5, 1.5, 1, 1.5, 2))
+            else:
+                cols = st.columns((1, 1, 1.5, 1.5, 1, 1.5, 1))
             
-            if col_nav1.button("← Anterior", key="prev_page", disabled=(st.session_state.filtro_page <= 1)):
+            cols[0].write(str(row["numero"]))
+            cols[1].write(str(row["tipo"]))
+            cols[2].write(str(row["secretaria"]))
+            cols[3].write(str(row["solicitante"]))
+            
+            # Status com cores
+            status_val = str(row["status"])
+            if status_val == "EM ABERTO":
+                cols[4].markdown(f"🔴 {status_val}")
+            elif status_val == "AGUARDANDO PEÇA(S)":
+                cols[4].markdown(f"🟠 {status_val}")
+            elif status_val == "FINALIZADO":
+                cols[4].markdown(f"🟢 {status_val}")
+            else:
+                cols[4].write(status_val)
+            
+            # Data
+            try:
+                data_formatada = pd.to_datetime(row["data"]).strftime('%d/%m/%Y')
+                cols[5].write(data_formatada)
+            except:
+                cols[5].write(str(row["data"]))
+            
+            # Ações
+            if pode_editar:
+                col_a, col_b, col_c = cols[6].columns(3)
+                
+                # Visualizar
+                if col_a.button("👁️", key=f"view_{idx}", help="Visualizar detalhes"):
+                    st.session_state.view_os_id = idx
+                    st.rerun()
+                
+                # Editar
+                if col_b.button("✏️", key=f"edit_{idx}", help="Editar OS"):
+                    st.session_state.edit_os_data = row.to_dict()
+                    st.rerun()
+                
+                # Deletar
+                if pode_deletar:
+                    if col_c.button("🗑️", key=f"del_{idx}", help="Deletar OS"):
+                        st.session_state.delete_os_data = row.to_dict()
+                        st.rerun()
+            else:
+                # Apenas visualizar
+                if cols[6].button("👁️", key=f"view_{idx}", help="Visualizar detalhes"):
+                    st.session_state.view_os_id = idx
+                    st.rerun()
+        
+        # Controles de paginação
+        st.markdown("---")
+        col1, col2, col3, col4, col5 = st.columns([1, 1, 2, 1, 1])
+        
+        with col1:
+            if st.button("⏮️ Primeira", disabled=(st.session_state.filtro_page == 1)):
+                st.session_state.filtro_page = 1
+                st.rerun()
+        
+        with col2:
+            if st.button("◀️ Anterior", disabled=(st.session_state.filtro_page == 1)):
                 st.session_state.filtro_page -= 1
                 st.rerun()
-            
-            col_nav2.markdown(f"**Página {st.session_state.filtro_page} de {total_pages}**")
-            
-            if col_nav3.button("Próxima →", key="next_page", disabled=(st.session_state.filtro_page >= total_pages)):
+        
+        with col3:
+            st.markdown(f"<div style='text-align: center'>Página {st.session_state.filtro_page} de {total_pages}</div>", 
+                       unsafe_allow_html=True)
+        
+        with col4:
+            if st.button("Próxima ▶️", disabled=(st.session_state.filtro_page == total_pages)):
                 st.session_state.filtro_page += 1
+                st.rerun()
+        
+        with col5:
+            if st.button("Última ⏭️", disabled=(st.session_state.filtro_page == total_pages)):
+                st.session_state.filtro_page = total_pages
                 st.rerun()
