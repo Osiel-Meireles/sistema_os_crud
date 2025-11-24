@@ -14,7 +14,7 @@ def initialize_database():
     for i in range(retries):
         try:
             DB_HOST = os.getenv("DB_HOST", "localhost")
-            DB_NAME = os.getenv("DB_NAME", "ordens_servico")gemini
+            DB_NAME = os.getenv("DB_NAME", "ordens_servico")
             DB_USER = os.getenv("DB_USER", "postgres")
             DB_PASSWORD = os.getenv("DB_PASSWORD", "1234")
             

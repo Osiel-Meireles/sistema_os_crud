@@ -188,7 +188,7 @@ def render_modal_detalhes_os(conn):
         st.markdown("#### Laudos de Avaliação Associados")
 
         tipo_os_laudo = f"OS {os_data.get('tipo')}"
-        numero_os = os_data.get("numero")
+        numero_os = os_data.get('numero')
         laudos_registrados = []
 
         try:
@@ -503,9 +503,7 @@ def render():
             where_clauses = []
             params = {}
 
-            # OBS: não filtrar por "tipo" aqui, pois as tabelas não têm
-            # essa coluna; o alias "tipo" é criado no SELECT.
-
+            # Lógica de construção de WHERE clauses
             if f_status:
                 placeholders = ",".join(
                     [f":st{i}" for i in range(len(f_status))]
@@ -553,25 +551,35 @@ def render():
             if f_data_fim:
                 where_clauses.append("data <= :data_fim")
                 params["data_fim"] = f_data_fim
-
-            query_interna = "SELECT *, 'Interna' as tipo FROM os_interna"
-            query_externa = "SELECT *, 'Externa' as tipo FROM os_externa"
-
+            
+            where_str = ""
             if where_clauses:
+                # O WHERE é adicionado aqui para ser inserido nas sub-queries
                 where_str = " WHERE " + " AND ".join(where_clauses)
-                query_interna += where_str
-                query_externa += where_str
+            
+            # --- CORREÇÃO: Lógica de seleção do tipo de OS para Union All ---
+            query_interna_base = "SELECT *, 'Interna' as tipo FROM os_interna"
+            query_externa_base = "SELECT *, 'Externa' as tipo FROM os_externa"
+            
+            queries_to_union = []
+            
+            # 1. Aplica o filtro de tipo selecionando as queries a serem unidas
+            if f_tipo == "Interna" or f_tipo == "Todos":
+                queries_to_union.append(f"({query_interna_base}{where_str})")
+            
+            if f_tipo == "Externa" or f_tipo == "Todos":
+                queries_to_union.append(f"({query_externa_base}{where_str})")
 
-            if f_tipo == "Interna":
-                query_final = query_interna
-            elif f_tipo == "Externa":
-                query_final = query_externa
-            else:
-                query_final = (
-                    f"({query_interna}) UNION ALL ({query_externa})"
-                )
+            # 2. Constrói a query final
+            if not queries_to_union:
+                st.warning("Nenhuma OS encontrada para o tipo selecionado.")
+                st.session_state.df_filtrado = pd.DataFrame()
+                st.session_state.filtro_page = 1
+                return
 
+            query_final = " UNION ALL ".join(queries_to_union)
             query_final += " ORDER BY data DESC, hora DESC"
+            # --- FIM DA CORREÇÃO ---
 
             try:
                 with conn.connect() as con:
