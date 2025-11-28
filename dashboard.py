@@ -1,23 +1,25 @@
-# CÓDIGO ATUALIZADO PARA: sistema_os_crud-main/dashboard.py
-
+# CÓDIGO COMPLETO E ATUALIZADO PARA: sistema_os_crud-main/dashboard.py
 import streamlit as st
 import pandas as pd
 from database import get_connection
 from sqlalchemy import text
 from datetime import datetime, date
-import pytz # Para lidar com fusos horários
+import pytz
 from config import TECNICOS, SECRETARIAS, CATEGORIAS
+
 
 def render():
     st.markdown("<h3 style='text-align: left;'>Dashboard de Indicadores</h3>", unsafe_allow_html=True)
 
     conn = get_connection()
     fuso_sp = pytz.timezone('America/Sao_Paulo')
+    role = st.session_state.get("role", "")
+    is_admin_role = role in ["admin", "administrativo"]
 
     try:
         # --- 1. QUERY ATUALIZADA ---
         # Buscamos também 'data_finalizada' para calcular o TMA
-        query = text(f"""
+        query = text("""
             SELECT status, tecnico, data, secretaria, categoria, data_finalizada FROM os_interna
             UNION ALL
             SELECT status, tecnico, data, secretaria, categoria, data_finalizada FROM os_externa
@@ -34,9 +36,160 @@ def render():
         df_base['data'] = pd.to_datetime(df_base['data'], errors='coerce')
         df_base['data_finalizada'] = pd.to_datetime(df_base['data_finalizada'], utc=True, errors='coerce').dt.tz_convert(fuso_sp).dt.tz_localize(None)
 
-        # --- 3. FILTROS INTERATIVOS ---
+        # --- 3. CÁLCULO DAS MÉTRICAS GERAIS (SEM FILTRO) ---
+        total_os = len(df_base)
+        os_abertas = len(df_base[df_base['status'] == 'EM ABERTO'])
+        os_finalizadas_count = len(df_base[df_base['status'].isin(['FINALIZADO', 'AGUARDANDO RETIRADA', 'ENTREGUE AO CLIENTE'])])
+        os_aguardando_peca = len(df_base[df_base['status'] == 'AGUARDANDO PEÇA(S)'])
+
+        # Cálculo do TMA geral
+        df_finalizadas_tma_geral = df_base[pd.notna(df_base['data_finalizada'])].copy()
+        
+        tma_display = "N/A"
+        if not df_finalizadas_tma_geral.empty:
+            df_finalizadas_tma_geral['tempo_atendimento_dias'] = (
+                df_finalizadas_tma_geral['data_finalizada'] - df_finalizadas_tma_geral['data']
+            ).dt.total_seconds() / (3600 * 24)
+            
+            df_finalizadas_tma_geral = df_finalizadas_tma_geral[df_finalizadas_tma_geral['tempo_atendimento_dias'] >= 0]
+            
+            tma_dias = df_finalizadas_tma_geral['tempo_atendimento_dias'].mean()
+            if pd.notna(tma_dias):
+                tma_display = f"{tma_dias:.1f} dias"
+
+        # --- 4. EXIBIÇÃO DAS MÉTRICAS GERAIS ---
         st.markdown("---")
-        st.markdown("#### Filtros do Dashboard")
+        st.markdown("##### Indicadores Gerais de OS")
+        col1, col2, col3, col4, col5 = st.columns(5)
+        col1.metric("Total de OS", total_os)
+        col2.metric("OS em Aberto", os_abertas)
+        col3.metric("OS Finalizadas", os_finalizadas_count)
+        
+        # MÉTRICA COM FLAG DE ATENÇÃO
+        if os_aguardando_peca > 0:
+            col4.metric("⚠️ Aguardando Peça(s)", os_aguardando_peca, 
+                       delta="Requer atenção", delta_color="inverse")
+        else:
+            col4.metric("✅ Aguardando Peça(s)", 0)
+        
+        col5.metric("Tempo Médio de Atendimento", tma_display)
+
+        # --- 5. VERIFICAÇÃO DE OSs AGUARDANDO PEÇAS (APÓS MÉTRICAS) ---
+        if is_admin_role:
+            try:
+                with conn.connect() as con:
+                    total_aguardando_pecas_interna = con.execute(
+                        text("SELECT COUNT(*) FROM os_interna WHERE status = 'AGUARDANDO PEÇA(S)'")
+                    ).scalar()
+                    total_aguardando_pecas_externa = con.execute(
+                        text("SELECT COUNT(*) FROM os_externa WHERE status = 'AGUARDANDO PEÇA(S)'")
+                    ).scalar()
+                    total_aguardando_pecas = total_aguardando_pecas_interna + total_aguardando_pecas_externa
+                
+                # Botão de alerta para OSs laudadas
+                if total_aguardando_pecas > 0:
+                    st.markdown("---")
+                    st.warning(
+                        f"⚠️ **Atenção:** Existem {total_aguardando_pecas} Ordem(ns) de Serviço com laudo técnico aguardando peça(s)."
+                    )
+                    
+                    col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
+                    with col_btn2:
+                        if st.button(
+                            f"🔍 Verificar {total_aguardando_pecas} OS(s) Laudada(s)",
+                            type="primary",
+                            use_container_width=True,
+                            help="Exibir todas as Ordens de Serviço que estão aguardando peça(s)"
+                        ):
+                            st.session_state["mostrar_os_laudadas"] = True
+                            st.rerun()
+                
+                # Modal/Expander para mostrar OSs laudadas
+                if st.session_state.get("mostrar_os_laudadas", False):
+                    with st.expander("📋 Ordens de Serviço Aguardando Peça(s)", expanded=True):
+                        query_laudadas = text("""
+                            SELECT 
+                                numero,
+                                'Interna' as tipo,
+                                secretaria,
+                                solicitante,
+                                equipamento,
+                                tecnico,
+                                data,
+                                status
+                            FROM os_interna
+                            WHERE status = 'AGUARDANDO PEÇA(S)'
+                            
+                            UNION ALL
+                            
+                            SELECT 
+                                numero,
+                                'Externa' as tipo,
+                                secretaria,
+                                solicitante,
+                                equipamento,
+                                tecnico,
+                                data,
+                                status
+                            FROM os_externa
+                            WHERE status = 'AGUARDANDO PEÇA(S)'
+                            
+                            ORDER BY data DESC
+                        """)
+                        
+                        with conn.connect() as con:
+                            result = con.execute(query_laudadas)
+                            rows = result.fetchall()
+                            columns = result.keys()
+                            df_laudadas = pd.DataFrame(rows, columns=columns)
+                        
+                        if not df_laudadas.empty:
+                            st.info(f"📊 Total: {len(df_laudadas)} OS(s) aguardando peça(s)")
+                            
+                            # Cabeçalho
+                            cols_header = st.columns([1, 1, 1.5, 1.5, 1.2, 1.2, 1])
+                            headers = ["Número", "Tipo", "Secretaria", "Solicitante", "Equipamento", "Técnico", "Data"]
+                            
+                            for col, header in zip(cols_header, headers):
+                                col.markdown(f"**{header}**")
+                            
+                            st.markdown("---")
+                            
+                            # Linhas
+                            for idx, row in df_laudadas.iterrows():
+                                cols = st.columns([1, 1, 1.5, 1.5, 1.2, 1.2, 1])
+                                
+                                cols[0].markdown(f"**{row['numero']}**")
+                                cols[1].write(str(row["tipo"]))
+                                cols[2].write(str(row["secretaria"]))
+                                cols[3].write(str(row["solicitante"]))
+                                cols[4].write(str(row["equipamento"] if pd.notna(row["equipamento"]) else "-"))
+                                cols[5].write(str(row["tecnico"]))
+                                
+                                try:
+                                    data_formatada = pd.to_datetime(row["data"]).strftime("%d/%m/%Y")
+                                    cols[6].write(data_formatada)
+                                except Exception:
+                                    cols[6].write(str(row["data"]))
+                            
+                            st.markdown("---")
+                            
+                            # Botão para fechar
+                            col_fechar1, col_fechar2, col_fechar3 = st.columns([1, 1, 1])
+                            with col_fechar2:
+                                if st.button("✓ Fechar Lista", use_container_width=True):
+                                    st.session_state["mostrar_os_laudadas"] = False
+                                    st.rerun()
+                        else:
+                            st.info("Nenhuma OS aguardando peça(s) no momento.")
+            
+            except Exception as e:
+                st.error(f"Erro ao verificar OSs laudadas: {e}")
+
+        # --- 6. FILTROS INTERATIVOS (OPCIONAL PARA GRÁFICOS) ---
+        st.markdown("---")
+        st.markdown("#### Filtros do Dashboard (Opcional)")
+        st.caption("Use os filtros abaixo para refinar a visualização dos gráficos")
         
         col_f1, col_f2, col_f3 = st.columns(3)
         
@@ -60,10 +213,10 @@ def render():
             st.error("A Data de Início não pode ser maior que a Data de Fim.")
             st.stop()
 
-        # --- 4. APLICAÇÃO DOS FILTROS ---
+        # --- 7. APLICAÇÃO DOS FILTROS (APENAS PARA GRÁFICOS) ---
         df_filtrado = df_base[
             (df_base['data'] >= pd.to_datetime(data_inicio)) &
-            (df_base['data'] <= pd.to_datetime(data_fim) + pd.Timedelta(days=1)) # Garante inclusão do dia todo
+            (df_base['data'] <= pd.to_datetime(data_fim) + pd.Timedelta(days=1))
         ]
         
         if tecnico_selecionado != "Todos":
@@ -73,41 +226,19 @@ def render():
             st.warning("Nenhum dado encontrado para os filtros selecionados.")
             st.stop()
 
-        # --- 5. CÁLCULO DAS MÉTRICAS PRINCIPAIS ---
-        total_os = len(df_filtrado)
-        os_abertas = len(df_filtrado[df_filtrado['status'] == 'EM ABERTO'])
-        os_finalizadas_count = len(df_filtrado[df_filtrado['status'].isin(['FINALIZADO', 'AGUARDANDO RETIRADA', 'ENTREGUE AO CLIENTE'])])
-        os_aguardando_peca = len(df_filtrado[df_filtrado['status'] == 'AGUARDANDO PEÇA(S)'])
-
-        # --- 6. CÁLCULO DO TEMPO MÉDIO DE ATENDIMENTO (TMA) ---
+        # Cálculo do TMA filtrado para o gráfico
         df_finalizadas_tma = df_filtrado[pd.notna(df_filtrado['data_finalizada'])].copy()
         
-        tma_display = "N/A"
         if not df_finalizadas_tma.empty:
-            # Calcula o tempo de atendimento em dias (como float)
             df_finalizadas_tma['tempo_atendimento_dias'] = (
                 df_finalizadas_tma['data_finalizada'] - df_finalizadas_tma['data']
-            ).dt.total_seconds() / (3600 * 24) # Converte segundos para dias
+            ).dt.total_seconds() / (3600 * 24)
             
-            # Filtra valores negativos (caso data de entrada seja errada)
             df_finalizadas_tma = df_finalizadas_tma[df_finalizadas_tma['tempo_atendimento_dias'] >= 0]
-            
-            tma_dias = df_finalizadas_tma['tempo_atendimento_dias'].mean()
-            if pd.notna(tma_dias):
-                tma_display = f"{tma_dias:.1f} dias"
-
-        # --- 7. EXIBIÇÃO DAS MÉTRICAS ---
-        st.markdown(f"##### Indicadores de OS (Período Selecionado)")
-        col1, col2, col3, col4, col5 = st.columns(5)
-        col1.metric("Total de OS no Período", total_os)
-        col2.metric("OS em Aberto", os_abertas)
-        col3.metric("OS Finalizadas", os_finalizadas_count)
-        col4.metric("Aguardando Peça(s)", os_aguardando_peca)
-        col5.metric("Tempo Médio de Atendimento", tma_display)
 
         st.markdown("---")
 
-        # --- 8. GRÁFICOS VISUAIS (substituindo tabelas) ---
+        # --- 8. GRÁFICOS VISUAIS (COM FILTROS APLICADOS) ---
         
         col_graf_1, col_graf_2 = st.columns(2)
 
@@ -133,7 +264,7 @@ def render():
                 df_chart_tecnicos = df_final_tecnicos.sort_values(by='Quantidade de OS', ascending=False).set_index('Técnico')
                 st.bar_chart(df_chart_tecnicos['Quantidade de OS'])
 
-            # GRÁFICO 2: TMA por Técnico (NOVO!)
+            # GRÁFICO 2: TMA por Técnico
             st.markdown("##### Tempo Médio de Atendimento por Técnico (em dias)")
             if df_finalizadas_tma.empty:
                 st.info("Nenhuma OS finalizada para calcular o TMA por técnico.")

@@ -1,11 +1,11 @@
 # CÓDIGO COMPLETO E CORRIGIDO PARA: sistema_os_crud-main/database.py
+
 import os
 import time
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.exc import OperationalError
 from datetime import datetime
-
 
 _engine = None
 
@@ -75,7 +75,7 @@ def init_db(engine):
                     laudo_pdf BYTEA
                 )
             """))
-            
+
             session.execute(text("""
                 CREATE TABLE IF NOT EXISTS os_externa (
                     id SERIAL PRIMARY KEY,
@@ -102,7 +102,7 @@ def init_db(engine):
                     laudo_pdf BYTEA
                 )
             """))
-            
+
             session.execute(text("""
                 CREATE TABLE IF NOT EXISTS equipamentos (
                     id SERIAL PRIMARY KEY,
@@ -123,7 +123,7 @@ def init_db(engine):
                     data_registro TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                 )
             """))
-            
+
             session.execute(text("""
                 CREATE TABLE IF NOT EXISTS laudos (
                     id SERIAL PRIMARY KEY,
@@ -139,7 +139,7 @@ def init_db(engine):
                     data_atendimento TIMESTAMP WITH TIME ZONE
                 )
             """))
-            
+
             session.execute(text("""
                 CREATE TABLE IF NOT EXISTS usuarios (
                     id SERIAL PRIMARY KEY,
@@ -150,42 +150,40 @@ def init_db(engine):
                     data_registro TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                 )
             """))
-            
+
             # --- RECRIAR TABELA RECARGAS (dropar a antiga e criar a nova) ---
             session.execute(text("DROP TABLE IF EXISTS recargas CASCADE"))
-            
             session.execute(text("""
                 CREATE TABLE IF NOT EXISTS recargas (
                     id SERIAL PRIMARY KEY,
                     numero_recarga VARCHAR(50) UNIQUE NOT NULL,
-                    
                     -- Data e hora de abertura (automáticas)
                     data_abertura DATE NOT NULL,
                     hora_abertura TIME NOT NULL,
-                    
                     -- Localização
                     secretaria VARCHAR(100) NOT NULL,
                     localizacao VARCHAR(255) NOT NULL,
-                    
                     -- Insumo
                     insumo VARCHAR(255) NOT NULL,
-                    
                     -- Status simplificado
                     status VARCHAR(50) NOT NULL DEFAULT 'EM ABERTO'
                         CHECK (status IN ('EM ABERTO', 'AGUARDANDO INSUMO', 'RECARGA FEITA')),
-                    
                     -- Responsável e metadados
                     responsavel VARCHAR(100),
                     data_atualizacao TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                 )
             """))
-            
+
             # --- 2. MIGRAÇÕES AUTOMÁTICAS ---
             session.execute(text("ALTER TABLE os_interna ADD COLUMN IF NOT EXISTS registrado_por VARCHAR(100);"))
             session.execute(text("ALTER TABLE os_externa ADD COLUMN IF NOT EXISTS registrado_por VARCHAR(100);"))
             session.execute(text("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS display_name VARCHAR(255);"))
-            
+
+            # NOVA MIGRAÇÃO: Campo para marcar laudos como visualizados
+            session.execute(text("ALTER TABLE os_interna ADD COLUMN IF NOT EXISTS laudo_visualizado BOOLEAN DEFAULT FALSE;"))
+            session.execute(text("ALTER TABLE os_externa ADD COLUMN IF NOT EXISTS laudo_visualizado BOOLEAN DEFAULT FALSE;"))
+
             # Migração da tabela LAUDOS
             session.execute(text("ALTER TABLE laudos DROP COLUMN IF EXISTS componente;"))
             session.execute(text("ALTER TABLE laudos DROP COLUMN IF EXISTS especificacao;"))
@@ -195,17 +193,17 @@ def init_db(engine):
             session.execute(text("ALTER TABLE laudos ADD COLUMN IF NOT EXISTS estado_conservacao VARCHAR(50);"))
             session.execute(text("ALTER TABLE laudos ADD COLUMN IF NOT EXISTS diagnostico TEXT;"))
             session.execute(text("ALTER TABLE laudos ADD COLUMN IF NOT EXISTS equipamento_completo VARCHAR(20);"))
-            
+
             # --- 3. CRIAÇÃO DE ÍNDICES ---
             session.execute(text("CREATE INDEX IF NOT EXISTS idx_laudos_numero_os ON laudos (numero_os, tipo_os)"))
             session.execute(text("CREATE INDEX IF NOT EXISTS idx_recargas_numero ON recargas (numero_recarga)"))
             session.execute(text("CREATE INDEX IF NOT EXISTS idx_recargas_status ON recargas (status)"))
             session.execute(text("CREATE INDEX IF NOT EXISTS idx_recargas_data ON recargas (data_abertura)"))
             session.execute(text("CREATE INDEX IF NOT EXISTS idx_recargas_secretaria ON recargas (secretaria)"))
-            
+
             session.commit()
             print("✅ Banco de dados inicializado com sucesso!")
-            
+
     except Exception as e:
         print(f"❌ ERRO AO CRIAR AS TABELAS: {e}")
         raise e

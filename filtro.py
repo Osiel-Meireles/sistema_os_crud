@@ -1,5 +1,4 @@
 # CÓDIGO COMPLETO E ATUALIZADO PARA: sistema_os_crud-main/filtro.py
-
 import streamlit as st
 import pandas as pd
 from database import get_connection
@@ -26,8 +25,8 @@ def f_deletar_os(conn, os_id, os_type):
             with con.begin():
                 query = text(f"DELETE FROM {table_name} WHERE id = :id")
                 con.execute(query, {"id": os_id})
-                st.success(f"OS (ID: {os_id}) deletada com sucesso.")
-                return True
+        st.success(f"OS (ID: {os_id}) deletada com sucesso.")
+        return True
     except Exception as e:
         st.error(f"Erro ao deletar OS: {e}")
         return False
@@ -41,7 +40,6 @@ def f_atualizar_os(conn, table_name, os_id, dados):
                 # Construir query UPDATE dinamicamente
                 set_clause = []
                 params = {"id": os_id}
-
                 for key, value in dados.items():
                     if key != "id":
                         set_clause.append(f"{key} = :{key}")
@@ -55,10 +53,10 @@ def f_atualizar_os(conn, table_name, os_id, dados):
                     f"UPDATE {table_name} SET {', '.join(set_clause)} WHERE id = :id"
                 )
                 con.execute(query, params)
-                st.success(
-                    f"Ordem de Serviço (ID: {os_id}) atualizada com sucesso!"
-                )
-                return True
+        st.success(
+            f"Ordem de Serviço (ID: {os_id}) atualizada com sucesso!"
+        )
+        return True
     except Exception as e:
         st.error(f"Erro ao atualizar OS: {e}")
         return False
@@ -93,19 +91,16 @@ def display_os_details(os_data):
     for col, label in col_map.items():
         if col in os_data and pd.notna(os_data[col]):
             value = os_data[col]
-
             if col == "data" and value:
                 try:
                     value = pd.to_datetime(value).strftime("%d/%m/%Y")
                 except (ValueError, TypeError):
                     pass
-
             if col == "hora" and value:
                 try:
                     value = pd.to_datetime(str(value)).strftime("%H:%M:%S")
                 except (ValueError, TypeError):
                     pass
-
             if col in ["data_finalizada", "data_retirada"] and value:
                 try:
                     value = (
@@ -115,7 +110,6 @@ def display_os_details(os_data):
                     )
                 except (ValueError, TypeError):
                     pass
-
             display_data.append([f"**{label}**", value])
 
     st.table(pd.DataFrame(display_data, columns=["Campo", "Valor"]))
@@ -183,7 +177,6 @@ def render_modal_detalhes_os(conn):
     @st.dialog("Detalhes Completos da Ordem de Serviço", width="large")
     def show_modal():
         display_os_details(os_data)
-
         st.markdown("---")
         st.markdown("#### Laudos de Avaliação Associados")
 
@@ -219,7 +212,6 @@ def render_modal_detalhes_os(conn):
                     f"{laudo.get('estado_conservacao')} "
                     f"({laudo['status']}) - Reg. {data_reg}"
                 )
-
                 with st.expander(exp_title):
                     st.markdown(f"**Técnico:** {laudo['tecnico']}")
                     st.markdown(
@@ -238,7 +230,6 @@ def render_modal_detalhes_os(conn):
                         disabled=True,
                         label_visibility="collapsed",
                     )
-
                     if laudo.get("observacoes"):
                         st.markdown("**Observações:**")
                         st.text_area(
@@ -248,8 +239,8 @@ def render_modal_detalhes_os(conn):
                             disabled=True,
                             label_visibility="collapsed",
                         )
+                    st.markdown("---")
 
-        st.markdown("---")
         if st.button(
             "Fechar Detalhes",
             use_container_width=True,
@@ -454,7 +445,6 @@ def render_modal_delete_os(conn):
 
 def render():
     st.markdown("## Filtro de Ordens de Serviço")
-
     conn = get_connection()
     role = st.session_state.get("role", "")
 
@@ -464,15 +454,20 @@ def render():
 
     # Renderizar modais
     render_modal_detalhes_os(conn)
-
     if pode_editar:
         render_modal_editar_os(conn)
-
     if pode_deletar:
         render_modal_delete_os(conn)
 
     # Filtros
     with st.expander("Filtros de Pesquisa", expanded=True):
+        # NOVA LINHA: Filtro por número da OS
+        f_numero_os = st.text_input(
+            "Número da OS",
+            placeholder="Digite o número da OS para buscar diretamente",
+            help="Filtrar por número específico da Ordem de Serviço"
+        )
+        
         col1, col2 = st.columns(2)
 
         with col1:
@@ -486,10 +481,8 @@ def render():
             f_equipamento = st.multiselect("Equipamento", EQUIPAMENTOS)
 
         col_data1, col_data2 = st.columns(2)
-
         with col_data1:
             f_data_inicio = st.date_input("Data Inicial")
-
         with col_data2:
             f_data_fim = st.date_input("Data Final")
 
@@ -502,6 +495,11 @@ def render():
         if filtrar:
             where_clauses = []
             params = {}
+
+            # NOVA LÓGICA: Filtro por número da OS
+            if f_numero_os and f_numero_os.strip():
+                where_clauses.append("numero = :numero_os")
+                params["numero_os"] = f_numero_os.strip()
 
             # Lógica de construção de WHERE clauses
             if f_status:
@@ -551,22 +549,21 @@ def render():
             if f_data_fim:
                 where_clauses.append("data <= :data_fim")
                 params["data_fim"] = f_data_fim
-            
+
             where_str = ""
             if where_clauses:
                 # O WHERE é adicionado aqui para ser inserido nas sub-queries
                 where_str = " WHERE " + " AND ".join(where_clauses)
-            
+
             # --- CORREÇÃO: Lógica de seleção do tipo de OS para Union All ---
             query_interna_base = "SELECT *, 'Interna' as tipo FROM os_interna"
             query_externa_base = "SELECT *, 'Externa' as tipo FROM os_externa"
-            
             queries_to_union = []
-            
+
             # 1. Aplica o filtro de tipo selecionando as queries a serem unidas
             if f_tipo == "Interna" or f_tipo == "Todos":
                 queries_to_union.append(f"({query_interna_base}{where_str})")
-            
+
             if f_tipo == "Externa" or f_tipo == "Todos":
                 queries_to_union.append(f"({query_externa_base}{where_str})")
 
@@ -587,8 +584,9 @@ def render():
                     rows = result.fetchall()
                     columns = result.keys()
                     df = pd.DataFrame(rows, columns=columns)
-                    st.session_state.df_filtrado = df
-                    st.session_state.filtro_page = 1
+
+                st.session_state.df_filtrado = df
+                st.session_state.filtro_page = 1
             except Exception as e:
                 st.error(f"Erro ao executar filtro: {e}")
                 st.exception(e)
@@ -753,7 +751,7 @@ def render():
 
         with col3:
             st.markdown(
-                f"<div style='text-align: center'>"
+                f"<div style='text-align: center;'>"
                 f"Página {st.session_state.filtro_page} "
                 f"de {total_pages}</div>",
                 unsafe_allow_html=True,
@@ -761,16 +759,16 @@ def render():
 
         with col4:
             if st.button(
-                "Próxima ▶️",
-                disabled=(st.session_state.filtro_page == total_pages),
+                "▶️ Próxima",
+                disabled=(st.session_state.filtro_page >= total_pages),
             ):
                 st.session_state.filtro_page += 1
                 st.rerun()
 
         with col5:
             if st.button(
-                "Última ⏭️",
-                disabled=(st.session_state.filtro_page == total_pages),
+                "⏭️ Última",
+                disabled=(st.session_state.filtro_page >= total_pages),
             ):
                 st.session_state.filtro_page = total_pages
                 st.rerun()
