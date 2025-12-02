@@ -461,7 +461,7 @@ def render():
 
     # Filtros
     with st.expander("Filtros de Pesquisa", expanded=True):
-        # NOVA LINHA: Filtro por número da OS
+        # Filtro por número da OS
         f_numero_os = st.text_input(
             "Número da OS",
             placeholder="Digite o número da OS para buscar diretamente",
@@ -496,7 +496,7 @@ def render():
             where_clauses = []
             params = {}
 
-            # NOVA LÓGICA: Filtro por número da OS
+            # Filtro por número da OS
             if f_numero_os and f_numero_os.strip():
                 where_clauses.append("numero = :numero_os")
                 params["numero_os"] = f_numero_os.strip()
@@ -542,20 +542,26 @@ def render():
                 for i, eq in enumerate(f_equipamento):
                     params[f"eq{i}"] = eq
 
-            if f_data_inicio:
-                where_clauses.append("data >= :data_inicio")
-                params["data_inicio"] = f_data_inicio
+            # --- LÓGICA DE FILTRO DE DATA ---
+            # Só aplica filtros de data se NÃO houver busca por número de OS
+            # Isso evita que o filtro de data (que vem preenchido por padrão)
+            # esconda a OS que o técnico está procurando.
+            if not (f_numero_os and f_numero_os.strip()):
+                if f_data_inicio:
+                    where_clauses.append("data >= :data_inicio")
+                    params["data_inicio"] = f_data_inicio
 
-            if f_data_fim:
-                where_clauses.append("data <= :data_fim")
-                params["data_fim"] = f_data_fim
+                if f_data_fim:
+                    where_clauses.append("data <= :data_fim")
+                    params["data_fim"] = f_data_fim
+            # --- FIM DA LÓGICA DE FILTRO DE DATA ---
 
             where_str = ""
             if where_clauses:
                 # O WHERE é adicionado aqui para ser inserido nas sub-queries
                 where_str = " WHERE " + " AND ".join(where_clauses)
 
-            # --- CORREÇÃO: Lógica de seleção do tipo de OS para Union All ---
+            # Lógica de seleção do tipo de OS para Union All
             query_interna_base = "SELECT *, 'Interna' as tipo FROM os_interna"
             query_externa_base = "SELECT *, 'Externa' as tipo FROM os_externa"
             queries_to_union = []
@@ -576,7 +582,6 @@ def render():
 
             query_final = " UNION ALL ".join(queries_to_union)
             query_final += " ORDER BY data DESC, hora DESC"
-            # --- FIM DA CORREÇÃO ---
 
             try:
                 with conn.connect() as con:

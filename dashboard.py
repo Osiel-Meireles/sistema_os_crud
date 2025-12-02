@@ -107,11 +107,13 @@ def render():
                 # Modal/Expander para mostrar OSs laudadas
                 if st.session_state.get("mostrar_os_laudadas", False):
                     with st.expander("📋 Ordens de Serviço Aguardando Peça(s)", expanded=True):
+                        # QUERY ATUALIZADA COM SETOR (DEPARTAMENTO)
                         query_laudadas = text("""
                             SELECT 
                                 numero,
                                 'Interna' as tipo,
                                 secretaria,
+                                setor,
                                 solicitante,
                                 equipamento,
                                 tecnico,
@@ -126,6 +128,7 @@ def render():
                                 numero,
                                 'Externa' as tipo,
                                 secretaria,
+                                setor,
                                 solicitante,
                                 equipamento,
                                 tecnico,
@@ -146,31 +149,39 @@ def render():
                         if not df_laudadas.empty:
                             st.info(f"📊 Total: {len(df_laudadas)} OS(s) aguardando peça(s)")
                             
-                            # Cabeçalho
-                            cols_header = st.columns([1, 1, 1.5, 1.5, 1.2, 1.2, 1])
-                            headers = ["Número", "Tipo", "Secretaria", "Solicitante", "Equipamento", "Técnico", "Data"]
+                            # Cabeçalho com Departamento e Laudo
+                            cols_header = st.columns([0.8, 0.8, 1.2, 1, 1.2, 1, 1, 0.8, 0.6])
+                            headers = ["Número", "Tipo", "Secretaria", "Departamento", "Solicitante", "Equipamento", "Técnico", "Data", "Laudo"]
                             
                             for col, header in zip(cols_header, headers):
                                 col.markdown(f"**{header}**")
                             
                             st.markdown("---")
                             
-                            # Linhas
+                            # Linhas com departamento e botão de laudo
                             for idx, row in df_laudadas.iterrows():
-                                cols = st.columns([1, 1, 1.5, 1.5, 1.2, 1.2, 1])
+                                cols = st.columns([0.8, 0.8, 1.2, 1, 1.2, 1, 1, 0.8, 0.6])
                                 
                                 cols[0].markdown(f"**{row['numero']}**")
                                 cols[1].write(str(row["tipo"]))
                                 cols[2].write(str(row["secretaria"]))
-                                cols[3].write(str(row["solicitante"]))
-                                cols[4].write(str(row["equipamento"] if pd.notna(row["equipamento"]) else "-"))
-                                cols[5].write(str(row["tecnico"]))
+                                cols[3].write(str(row["setor"] if pd.notna(row["setor"]) else "-"))
+                                cols[4].write(str(row["solicitante"]))
+                                cols[5].write(str(row["equipamento"] if pd.notna(row["equipamento"]) else "-"))
+                                cols[6].write(str(row["tecnico"]))
                                 
                                 try:
                                     data_formatada = pd.to_datetime(row["data"]).strftime("%d/%m/%Y")
-                                    cols[6].write(data_formatada)
+                                    cols[7].write(data_formatada)
                                 except Exception:
-                                    cols[6].write(str(row["data"]))
+                                    cols[7].write(str(row["data"]))
+                                
+                                # BOTÃO PARA VER LAUDO
+                                btn_key = f"laudo_{row['numero'].replace('-', '_')}_{idx}"
+                                if cols[8].button("📄", key=btn_key, help="Ver laudos"):
+                                    st.session_state["ver_laudo_numero"] = row["numero"]
+                                    st.session_state["ver_laudo_tipo"] = row["tipo"]
+                                    st.rerun()
                             
                             st.markdown("---")
                             
@@ -185,6 +196,87 @@ def render():
             
             except Exception as e:
                 st.error(f"Erro ao verificar OSs laudadas: {e}")
+                st.exception(e)
+
+        # --- MODAL PARA VISUALIZAR LAUDOS ---
+        if "ver_laudo_numero" in st.session_state and st.session_state.get("ver_laudo_numero"):
+            numero_os = st.session_state["ver_laudo_numero"]
+            tipo_os = st.session_state["ver_laudo_tipo"]
+            tipo_laudo = f"OS {tipo_os}"
+            
+            @st.dialog(f"📋 Laudos da OS {numero_os}", width="large")
+            def mostrar_laudos():
+                try:
+                    query_laudos = text("""
+                        SELECT * FROM laudos 
+                        WHERE numero_os = :num AND tipo_os = :tipo 
+                        ORDER BY data_registro DESC
+                    """)
+                    
+                    with conn.connect() as con:
+                        results = con.execute(
+                            query_laudos, 
+                            {"num": numero_os, "tipo": tipo_laudo}
+                        ).fetchall()
+                        laudos = [r._mapping for r in results]
+                    
+                    if not laudos:
+                        st.info(f"Nenhum laudo registrado para a OS {numero_os}.")
+                    else:
+                        st.success(f"✅ **{len(laudos)} laudo(s) encontrado(s)**")
+                        
+                        for laudo in laudos:
+                            data_reg = laudo["data_registro"].astimezone(fuso_sp).strftime("%d/%m/%Y %H:%M")
+                            
+                            exp_title = (
+                                f"🔧 Laudo #{laudo['id']} - "
+                                f"{laudo.get('estado_conservacao', 'N/A')} - "
+                                f"Registrado em {data_reg}"
+                            )
+                            
+                            with st.expander(exp_title, expanded=True):
+                                col1, col2 = st.columns(2)
+                                
+                                with col1:
+                                    st.markdown(f"**👤 Técnico:** {laudo['tecnico']}")
+                                    st.markdown(f"**📊 Estado de Conservação:** {laudo.get('estado_conservacao', 'N/A')}")
+                                    st.markdown(f"**🔧 Equipamento Completo:** {laudo.get('equipamento_completo', 'N/A')}")
+                                
+                                with col2:
+                                    st.markdown(f"**📌 Status:** {laudo['status']}")
+                                    st.markdown(f"**📅 Data de Registro:** {data_reg}")
+                                
+                                st.markdown("---")
+                                st.markdown("**🔍 Diagnóstico:**")
+                                st.text_area(
+                                    f"diag_{laudo['id']}", 
+                                    laudo.get("diagnostico", "Sem diagnóstico registrado."), 
+                                    height=120, 
+                                    disabled=True, 
+                                    label_visibility="collapsed"
+                                )
+                                
+                                if laudo.get("observacoes"):
+                                    st.markdown("**📝 Observações:**")
+                                    st.text_area(
+                                        f"obs_{laudo['id']}", 
+                                        laudo["observacoes"], 
+                                        height=100, 
+                                        disabled=True, 
+                                        label_visibility="collapsed"
+                                    )
+                
+                except Exception as e:
+                    st.error(f"❌ Erro ao buscar laudos: {e}")
+                    st.exception(e)
+                
+                st.markdown("---")
+                if st.button("✓ Fechar", use_container_width=True, type="primary"):
+                    del st.session_state["ver_laudo_numero"]
+                    del st.session_state["ver_laudo_tipo"]
+                    st.rerun()
+            
+            mostrar_laudos()
 
         # --- 6. FILTROS INTERATIVOS (OPCIONAL PARA GRÁFICOS) ---
         st.markdown("---")
