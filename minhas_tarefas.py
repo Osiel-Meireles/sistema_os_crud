@@ -1,6 +1,3 @@
-# CÓDIGO COMPLETO E CORRIGIDO PARA: sistema_os_crud-main/minhas_tarefas.py
-# Versão com paginação e redirecionamento para Dar Baixa
-
 import streamlit as st
 import pandas as pd
 from sqlalchemy import text
@@ -11,15 +8,18 @@ import pytz
 import math
 
 def buscar_tarefas_tecnico(conn, display_name):
-    """Busca todas as OSs atribuídas ao técnico logado."""
+    """Busca todas as OSs atribuídas ao técnico logado (Apenas Pendentes)."""
     try:
-        # Query para buscar OSs de ambas as tabelas
+        # Query atualizada: Exclui 'AGUARDANDO RETIRADA', 'FINALIZADO' e 'ENTREGUE AO CLIENTE'
+        # Assim, mostra apenas o que requer ação real do técnico (EM ABERTO, AGUARDANDO PEÇAS)
         query = text("""
             SELECT *, 'Interna' as tipo FROM os_interna 
-            WHERE tecnico = :tecnico AND status != 'ENTREGUE AO CLIENTE'
+            WHERE tecnico = :tecnico 
+            AND status NOT IN ('ENTREGUE AO CLIENTE', 'AGUARDANDO RETIRADA', 'FINALIZADO')
             UNION ALL
             SELECT *, 'Externa' as tipo FROM os_externa 
-            WHERE tecnico = :tecnico AND status != 'ENTREGUE AO CLIENTE'
+            WHERE tecnico = :tecnico 
+            AND status NOT IN ('ENTREGUE AO CLIENTE', 'AGUARDANDO RETIRADA', 'FINALIZADO')
             ORDER BY data DESC, hora DESC
         """)
         
@@ -95,14 +95,19 @@ def buscar_os_pendentes_laudo(conn, display_name):
             # Para cada OS, verificar se já tem laudo
             os_sem_laudo = []
             for _, row in df_os.iterrows():
-                tipo_os_laudo = f"OS {row['tipo']}"
+                tipo_os_laudo = f"OS {row['tipo']}" # Mantido conforme lógica original do laudo
+                # Correção preventiva: Verificar se a lógica de laudos usa "OS Interna" ou "Interna"
+                # Assumindo que usa "OS Interna" baseado no código original de laudos.py
+                
                 query_laudo = text("""
                     SELECT COUNT(*) as total FROM laudos 
-                    WHERE numero_os = :numero AND tipo_os = :tipo
+                    WHERE numero_os = :numero 
+                    AND (tipo_os = :tipo OR tipo_os = :tipo_simples)
                 """)
                 result_laudo = con.execute(query_laudo, {
                     "numero": row['numero'],
-                    "tipo": tipo_os_laudo
+                    "tipo": tipo_os_laudo,
+                    "tipo_simples": row['tipo'] # Fallback para compatibilidade
                 }).fetchone()
                 
                 if result_laudo[0] == 0:  # Não tem laudo
@@ -114,14 +119,17 @@ def buscar_os_pendentes_laudo(conn, display_name):
         return pd.DataFrame()
 
 def buscar_os_recentes_finalizadas(conn, display_name, limite=5):
-    """Busca as últimas OSs finalizadas do técnico."""
+    """Busca as últimas OSs finalizadas do técnico (Inclui Aguardando Retirada)."""
     try:
+        # Query atualizada: Inclui 'FINALIZADO', 'AGUARDANDO RETIRADA' e 'ENTREGUE AO CLIENTE'
         query = text("""
             SELECT *, 'Interna' as tipo FROM os_interna 
-            WHERE tecnico = :tecnico AND status = 'FINALIZADO'
+            WHERE tecnico = :tecnico 
+            AND status IN ('FINALIZADO', 'AGUARDANDO RETIRADA', 'ENTREGUE AO CLIENTE')
             UNION ALL
             SELECT *, 'Externa' as tipo FROM os_externa 
-            WHERE tecnico = :tecnico AND status = 'FINALIZADO'
+            WHERE tecnico = :tecnico 
+            AND status IN ('FINALIZADO', 'AGUARDANDO RETIRADA', 'ENTREGUE AO CLIENTE')
             ORDER BY data_finalizada DESC
             LIMIT :limite
         """)
@@ -149,7 +157,7 @@ def display_expandable_card(row, idx, display_name):
         status_emoji = "🔴"
     elif status == "AGUARDANDO PEÇA(S)":
         status_emoji = "🟠"
-    elif status == "FINALIZADO":
+    elif status in ["FINALIZADO", "AGUARDANDO RETIRADA", "ENTREGUE AO CLIENTE"]:
         status_emoji = "🟢"
     else:
         status_emoji = "⚪"
@@ -446,12 +454,13 @@ def render():
                         st.caption(row.get('categoria', 'N/A'))
                     
                     with col4:
+                        status = row.get('status')
                         try:
                             data_fin = pd.to_datetime(row.get('data_finalizada'))
                             data_fmt = data_fin.strftime('%d/%m/%Y')
-                            st.markdown(f"🟢 Finalizado")
+                            st.markdown(f"🟢 {status}")
                             st.caption(data_fmt)
                         except:
-                            st.markdown("🟢 Finalizado")
+                            st.markdown(f"🟢 {status}")
                     
                     st.markdown("---")
