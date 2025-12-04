@@ -180,7 +180,10 @@ def render_modal_detalhes_os(conn):
         st.markdown("---")
         st.markdown("#### Laudos de Avaliação Associados")
 
-        tipo_os_laudo = f"OS {os_data.get('tipo')}"
+        # --- CORREÇÃO AQUI: Removemos o f"OS {}" ---
+        tipo_os_laudo = os_data.get('tipo')
+        # -------------------------------------------
+        
         numero_os = os_data.get('numero')
         laudos_registrados = []
 

@@ -202,7 +202,10 @@ def render():
         if "ver_laudo_numero" in st.session_state and st.session_state.get("ver_laudo_numero"):
             numero_os = st.session_state["ver_laudo_numero"]
             tipo_os = st.session_state["ver_laudo_tipo"]
-            tipo_laudo = f"OS {tipo_os}"
+            
+            # --- CORREÇÃO AQUI: Removemos o f"OS {}" ---
+            tipo_laudo = tipo_os 
+            # -------------------------------------------
             
             @st.dialog(f"📋 Laudos da OS {numero_os}", width="large")
             def mostrar_laudos():
