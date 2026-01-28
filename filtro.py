@@ -1,4 +1,5 @@
-# CÓDIGO COMPLETO E ATUALIZADO PARA: sistema_os_crud-main/filtro.py
+# CÓDIGO COMPLETO E CORRIGIDO PARA: sistema_os_crud-main/filtro.py
+# VERSÃO FINAL - Todos os bugs de modal corrigidos
 import streamlit as st
 import pandas as pd
 from database import get_connection
@@ -16,6 +17,10 @@ import math
 import pytz
 from datetime import datetime
 
+
+# ============================================================================
+# FUNÇÕES AUXILIARES DE BANCO DE DADOS
+# ============================================================================
 
 def f_deletar_os(conn, os_id, os_type):
     """Deleta uma OS específica do banco de dados."""
@@ -37,7 +42,6 @@ def f_atualizar_os(conn, table_name, os_id, dados):
     try:
         with conn.connect() as con:
             with con.begin():
-                # Construir query UPDATE dinamicamente
                 set_clause = []
                 params = {"id": os_id}
                 for key, value in dados.items():
@@ -53,20 +57,34 @@ def f_atualizar_os(conn, table_name, os_id, dados):
                     f"UPDATE {table_name} SET {', '.join(set_clause)} WHERE id = :id"
                 )
                 con.execute(query, params)
-        st.success(
-            f"Ordem de Serviço (ID: {os_id}) atualizada com sucesso!"
-        )
+        st.success(f"Ordem de Serviço (ID: {os_id}) atualizada com sucesso!")
         return True
     except Exception as e:
         st.error(f"Erro ao atualizar OS: {e}")
         return False
 
 
+# ============================================================================
+# FUNÇÃO DE LIMPEZA DE ESTADOS DOS MODAIS
+# ============================================================================
+
+def limpar_estados_modais():
+    """Limpa todos os estados relacionados aos modais para evitar conflitos."""
+    if "view_os_id" in st.session_state:
+        del st.session_state.view_os_id
+    if "edit_os_data" in st.session_state:
+        del st.session_state.edit_os_data
+    if "delete_os_data" in st.session_state:
+        del st.session_state.delete_os_data
+
+
+# ============================================================================
+# FUNÇÕES DE EXIBIÇÃO
+# ============================================================================
+
 def display_os_details(os_data):
     """Exibe os detalhes de uma OS."""
-    st.markdown(
-        f"#### Detalhes Completos da OS: {os_data.get('numero', 'N/A')}"
-    )
+    st.markdown(f"#### Detalhes Completos da OS: {os_data.get('numero', 'N/A')}")
 
     col_map = {
         "numero": "Número",
@@ -151,300 +169,229 @@ def display_os_details(os_data):
         st.download_button(
             label=f"Baixar Laudo PDF ({os_data.get('laudo_filename')})",
             data=pdf_data,
-            file_name=os_data.get("laudo_filename"),
+            file_name=os_data.get('laudo_filename'),
             mime="application/pdf",
         )
 
 
-def render_modal_detalhes_os(conn):
-    """Renderiza o modal de detalhes da OS."""
-    if "view_os_id" not in st.session_state or st.session_state.view_os_id is None:
-        return
+# ============================================================================
+# MODAIS - DEFINIDOS COMO @st.dialog
+# ============================================================================
+
+@st.dialog("Detalhes Completos da Ordem de Serviço", width="large")
+def modal_detalhes(os_data, conn):
+    """Modal para exibir detalhes completos da OS."""
+    display_os_details(os_data)
+    st.markdown("---")
+    st.markdown("#### Laudos de Avaliação Associados")
+
+    tipo_os_laudo = os_data.get('tipo')
+    numero_os = os_data.get('numero')
+    laudos_registrados = []
 
     try:
-        os_data = st.session_state.df_filtrado.iloc[
-            st.session_state.view_os_id
-        ]
-    except IndexError:
-        st.error("Erro ao carregar dados da OS. Tente filtrar novamente.")
-        st.session_state.view_os_id = None
-        return
+        query_laudos = text(
+            "SELECT * FROM laudos "
+            "WHERE numero_os = :num AND tipo_os = :tipo "
+            "ORDER BY id DESC"
+        )
+        with conn.connect() as con:
+            results = con.execute(
+                query_laudos,
+                {"num": numero_os, "tipo": tipo_os_laudo},
+            ).fetchall()
+            laudos_registrados = [r._mapping for r in results]
     except Exception as e:
-        st.error(f"Erro inesperado: {e}")
-        st.session_state.view_os_id = None
-        return
+        st.error(f"Erro ao buscar laudos: {e}")
 
-    @st.dialog("Detalhes Completos da Ordem de Serviço", width="large")
-    def show_modal():
-        display_os_details(os_data)
-        st.markdown("---")
-        st.markdown("#### Laudos de Avaliação Associados")
-
-        # --- CORREÇÃO AQUI: Removemos o f"OS {}" ---
-        tipo_os_laudo = os_data.get('tipo')
-        # -------------------------------------------
-        
-        numero_os = os_data.get('numero')
-        laudos_registrados = []
-
-        try:
-            query_laudos = text(
-                "SELECT * FROM laudos "
-                "WHERE numero_os = :num AND tipo_os = :tipo "
-                "ORDER BY id DESC"
+    if not laudos_registrados:
+        st.info("Nenhum laudo de avaliação registrado para esta OS.")
+    else:
+        fuso_sp = pytz.timezone("America/Sao_Paulo")
+        for laudo in laudos_registrados:
+            data_reg = laudo["data_registro"].astimezone(fuso_sp).strftime("%d/%m/%Y %H:%M")
+            exp_title = (
+                f"Laudo ID {laudo['id']} - "
+                f"{laudo.get('estado_conservacao')} "
+                f"({laudo['status']}) - Reg. {data_reg}"
             )
-            with conn.connect() as con:
-                results = con.execute(
-                    query_laudos,
-                    {"num": numero_os, "tipo": tipo_os_laudo},
-                ).fetchall()
-                laudos_registrados = [r._mapping for r in results]
-        except Exception as e:
-            st.error(f"Erro ao buscar laudos: {e}")
-
-        if not laudos_registrados:
-            st.info("Nenhum laudo de avaliação registrado para esta OS.")
-        else:
-            fuso_sp = pytz.timezone("America/Sao_Paulo")
-            for laudo in laudos_registrados:
-                data_reg = laudo["data_registro"].astimezone(
-                    fuso_sp
-                ).strftime("%d/%m/%Y %H:%M")
-                exp_title = (
-                    f"Laudo ID {laudo['id']} - "
-                    f"{laudo.get('estado_conservacao')} "
-                    f"({laudo['status']}) - Reg. {data_reg}"
+            with st.expander(exp_title):
+                st.markdown(f"**Técnico:** {laudo['tecnico']}")
+                st.markdown(f"**Estado de Conservação:** {laudo.get('estado_conservacao')}")
+                st.markdown(f"**Equipamento Completo:** {laudo.get('equipamento_completo')}")
+                st.markdown("**Diagnóstico:**")
+                st.text_area(
+                    f"diag_{laudo['id']}",
+                    laudo.get("diagnostico", ""),
+                    height=100,
+                    disabled=True,
+                    label_visibility="collapsed",
                 )
-                with st.expander(exp_title):
-                    st.markdown(f"**Técnico:** {laudo['tecnico']}")
-                    st.markdown(
-                        f"**Estado de Conservação:** "
-                        f"{laudo.get('estado_conservacao')}"
-                    )
-                    st.markdown(
-                        f"**Equipamento Completo:** "
-                        f"{laudo.get('equipamento_completo')}"
-                    )
-                    st.markdown("**Diagnóstico:**")
+                if laudo.get("observacoes"):
+                    st.markdown("**Observações:**")
                     st.text_area(
-                        f"diag_{laudo['id']}",
-                        laudo.get("diagnostico", ""),
-                        height=100,
+                        f"obs_{laudo['id']}",
+                        laudo["observacoes"],
+                        height=80,
                         disabled=True,
                         label_visibility="collapsed",
                     )
-                    if laudo.get("observacoes"):
-                        st.markdown("**Observações:**")
-                        st.text_area(
-                            f"obs_{laudo['id']}",
-                            laudo["observacoes"],
-                            height=80,
-                            disabled=True,
-                            label_visibility="collapsed",
-                        )
-                    st.markdown("---")
+                st.markdown("---")
 
-        if st.button(
-            "Fechar Detalhes",
-            use_container_width=True,
-            key="close_modal_filter",
-        ):
-            st.session_state.view_os_id = None
-            st.rerun()
-
-    show_modal()
+    if st.button("Fechar Detalhes", use_container_width=True, key="close_modal_detalhes"):
+        limpar_estados_modais()
+        st.rerun()
 
 
-def render_modal_editar_os(conn):
-    """Renderiza o modal de edição da OS."""
-    if "edit_os_data" not in st.session_state or st.session_state.edit_os_data is None:
-        return
-
-    os_data = st.session_state.edit_os_data
+@st.dialog("Editar Ordem de Serviço", width="large")
+def modal_editar(os_data, conn):
+    """Modal para editar uma OS."""
     os_tipo = os_data.get("tipo")
     table_name = "os_interna" if os_tipo == "Interna" else "os_externa"
 
-    @st.dialog("Editar Ordem de Serviço", width="large")
-    def show_modal():
-        st.markdown(f"### Editando OS #{os_data.get('numero', 'N/A')}")
-        st.markdown(
-            f"**Tipo:** {os_tipo} | **Status Atual:** "
-            f"{os_data.get('status', 'N/A')}"
-        )
-        st.markdown("---")
+    st.markdown(f"### Editando OS #{os_data.get('numero', 'N/A')}")
+    st.markdown(f"**Tipo:** {os_tipo} | **Status Atual:** {os_data.get('status', 'N/A')}")
+    st.markdown("---")
 
-        # Formulário de edição
-        with st.form("form_editar_os"):
-            col1, col2, col3 = st.columns(3)
+    with st.form("form_editar_os"):
+        col1, col2, col3 = st.columns(3)
 
-            with col1:
-                status = st.selectbox(
-                    "Status *",
-                    STATUS_OPTIONS,
-                    index=STATUS_OPTIONS.index(
-                        os_data.get("status", "EM ABERTO")
-                    )
-                    if os_data.get("status") in STATUS_OPTIONS
-                    else 0,
-                )
-
-            with col2:
-                secretaria = st.selectbox(
-                    "Secretaria *",
-                    sorted(SECRETARIAS),
-                    index=sorted(SECRETARIAS).index(
-                        os_data.get("secretaria")
-                    )
-                    if os_data.get("secretaria") in sorted(SECRETARIAS)
-                    else 0,
-                )
-
-            with col3:
-                setor = st.text_input(
-                    "Setor",
-                    value=os_data.get("setor", ""),
-                    placeholder="Ex: TI, Administrativo",
-                )
-
-            col1, col2, col3 = st.columns(3)
-
-            with col1:
-                tecnico = st.selectbox(
-                    "Técnico *",
-                    sorted(TECNICOS),
-                    index=sorted(TECNICOS).index(os_data.get("tecnico"))
-                    if os_data.get("tecnico") in sorted(TECNICOS)
-                    else 0,
-                )
-
-            with col2:
-                equipamento = st.text_input(
-                    "Equipamento",
-                    value=os_data.get("equipamento", ""),
-                    placeholder="Ex: Desktop, Impressora",
-                )
-
-            with col3:
-                patrimonio = st.text_input(
-                    "Patrimônio",
-                    value=os_data.get("patrimonio", ""),
-                    placeholder="Ex: PA-2024-001",
-                )
-
-            col1, col2 = st.columns(2)
-
-            with col1:
-                categoria = st.selectbox(
-                    "Categoria",
-                    [""] + sorted(CATEGORIAS),
-                    index=(
-                        [""] + sorted(CATEGORIAS)
-                    ).index(os_data.get("categoria", ""))
-                    if os_data.get("categoria")
-                    else 0,
-                )
-
-            with col2:
-                data_finalizada = st.date_input(
-                    "Data de Finalização",
-                    value=pd.to_datetime(
-                        os_data.get("data_finalizada")
-                    ).date()
-                    if pd.notna(os_data.get("data_finalizada"))
-                    else None,
-                )
-
-            st.markdown("#### Descrição do Serviço")
-            servico_executado = st.text_area(
-                "Serviço Executado",
-                value=os_data.get("servico_executado", ""),
-                height=150,
-                placeholder="Descreva o serviço realizado...",
+        with col1:
+            status = st.selectbox(
+                "Status *",
+                STATUS_OPTIONS,
+                index=STATUS_OPTIONS.index(os_data.get("status", "EM ABERTO"))
+                if os_data.get("status") in STATUS_OPTIONS
+                else 0,
             )
 
-            submitted = st.form_submit_button(
-                "Salvar Alterações",
-                use_container_width=True,
-                type="primary",
+        with col2:
+            secretaria = st.selectbox(
+                "Secretaria *",
+                sorted(SECRETARIAS),
+                index=sorted(SECRETARIAS).index(os_data.get("secretaria"))
+                if os_data.get("secretaria") in sorted(SECRETARIAS)
+                else 0,
             )
 
-            if submitted:
-                if not secretaria or not tecnico or not status:
-                    st.error(
-                        "Preencha todos os campos obrigatórios "
-                        "(marcados com *)."
-                    )
-                else:
-                    dados_atualizacao = {
-                        "status": status,
-                        "secretaria": secretaria,
-                        "setor": setor if setor else None,
-                        "tecnico": tecnico,
-                        "equipamento": equipamento if equipamento else None,
-                        "patrimonio": patrimonio if patrimonio else None,
-                        "categoria": categoria if categoria else None,
-                        "servico_executado": servico_executado
-                        if servico_executado
-                        else None,
-                        "data_finalizada": data_finalizada
-                        if data_finalizada
-                        else None,
-                    }
+        with col3:
+            setor = st.text_input(
+                "Setor",
+                value=os_data.get("setor", ""),
+                placeholder="Ex: TI, Administrativo",
+            )
 
-                    if f_atualizar_os(
-                        conn, table_name, os_data.get("id"), dados_atualizacao
-                    ):
-                        # Limpar estado e recarregar
-                        del st.session_state.edit_os_data
-                        st.session_state.df_filtrado = pd.DataFrame()
-                        st.rerun()
+        col1, col2, col3 = st.columns(3)
 
-        st.markdown("---")
-        if st.button("Cancelar", use_container_width=True):
-            del st.session_state.edit_os_data
-            st.rerun()
+        with col1:
+            tecnico = st.selectbox(
+                "Técnico *",
+                sorted(TECNICOS),
+                index=sorted(TECNICOS).index(os_data.get("tecnico"))
+                if os_data.get("tecnico") in sorted(TECNICOS)
+                else 0,
+            )
 
-    show_modal()
+        with col2:
+            equipamento = st.text_input(
+                "Equipamento",
+                value=os_data.get("equipamento", ""),
+                placeholder="Ex: Desktop, Impressora",
+            )
 
-
-def render_modal_delete_os(conn):
-    """Renderiza o modal de confirmação de deleção."""
-    if (
-        "delete_os_data" not in st.session_state
-        or st.session_state.delete_os_data is None
-    ):
-        return
-
-    data = st.session_state.delete_os_data
-
-    @st.dialog("Confirmar Exclusão", width="large")
-    def show_modal():
-        st.warning(
-            f"**Você tem certeza que deseja deletar a OS "
-            f"{data.get('numero')}?**"
-        )
-        st.markdown("Esta ação não pode ser desfeita.")
-        st.markdown(f"**Tipo:** {data.get('tipo')}")
-        st.markdown(f"**Secretaria:** {data.get('secretaria')}")
-        st.markdown(f"**Solicitante:** {data.get('solicitante')}")
-        st.markdown("---")
+        with col3:
+            patrimonio = st.text_input(
+                "Patrimônio",
+                value=os_data.get("patrimonio", ""),
+                placeholder="Ex: PA-2024-001",
+            )
 
         col1, col2 = st.columns(2)
 
-        if col1.button(
-            "Confirmar Exclusão", type="primary", use_container_width=True
-        ):
-            if f_deletar_os(conn, data.get("id"), data.get("tipo")):
-                del st.session_state.delete_os_data
-                st.session_state.df_filtrado = pd.DataFrame()
-                st.rerun()
+        with col1:
+            categoria = st.selectbox(
+                "Categoria",
+                [""] + sorted(CATEGORIAS),
+                index=([""] + sorted(CATEGORIAS)).index(os_data.get("categoria", ""))
+                if os_data.get("categoria")
+                else 0,
+            )
 
-        if col2.button("Cancelar", use_container_width=True):
-            del st.session_state.delete_os_data
+        with col2:
+            data_finalizada = st.date_input(
+                "Data de Finalização",
+                value=pd.to_datetime(os_data.get("data_finalizada")).date()
+                if pd.notna(os_data.get("data_finalizada"))
+                else None,
+            )
+
+        st.markdown("#### Descrição do Serviço")
+        servico_executado = st.text_area(
+            "Serviço Executado",
+            value=os_data.get("servico_executado", ""),
+            height=150,
+            placeholder="Descreva o serviço realizado...",
+        )
+
+        submitted = st.form_submit_button(
+            "Salvar Alterações",
+            use_container_width=True,
+            type="primary",
+        )
+
+        if submitted:
+            if not secretaria or not tecnico or not status:
+                st.error("Preencha todos os campos obrigatórios (marcados com *).")
+            else:
+                dados_atualizacao = {
+                    "status": status,
+                    "secretaria": secretaria,
+                    "setor": setor if setor else None,
+                    "tecnico": tecnico,
+                    "equipamento": equipamento if equipamento else None,
+                    "patrimonio": patrimonio if patrimonio else None,
+                    "categoria": categoria if categoria else None,
+                    "servico_executado": servico_executado if servico_executado else None,
+                    "data_finalizada": data_finalizada if data_finalizada else None,
+                }
+
+                if f_atualizar_os(conn, table_name, os_data.get("id"), dados_atualizacao):
+                    limpar_estados_modais()
+                    st.session_state.df_filtrado = pd.DataFrame()
+                    st.rerun()
+
+    st.markdown("---")
+    if st.button("Cancelar", use_container_width=True, key="cancel_edit"):
+        limpar_estados_modais()
+        st.rerun()
+
+
+@st.dialog("Confirmar Exclusão", width="large")
+def modal_excluir(os_data, conn):
+    """Modal para confirmar exclusão de OS."""
+    st.warning(f"**Você tem certeza que deseja deletar a OS {os_data.get('numero')}?**")
+    st.markdown("Esta ação não pode ser desfeita.")
+    st.markdown(f"**Tipo:** {os_data.get('tipo')}")
+    st.markdown(f"**Secretaria:** {os_data.get('secretaria')}")
+    st.markdown(f"**Solicitante:** {os_data.get('solicitante')}")
+    st.markdown("---")
+
+    col1, col2 = st.columns(2)
+
+    if col1.button("Confirmar Exclusão", type="primary", use_container_width=True):
+        if f_deletar_os(conn, os_data.get("id"), os_data.get("tipo")):
+            limpar_estados_modais()
+            st.session_state.df_filtrado = pd.DataFrame()
             st.rerun()
 
-    show_modal()
+    if col2.button("Cancelar", use_container_width=True, key="cancel_delete"):
+        limpar_estados_modais()
+        st.rerun()
 
+
+# ============================================================================
+# FUNÇÃO PRINCIPAL DE RENDERIZAÇÃO
+# ============================================================================
 
 def render():
     st.markdown("## Filtro de Ordens de Serviço")
@@ -455,22 +402,14 @@ def render():
     pode_editar = role in ["admin", "administrativo"]
     pode_deletar = role in ["admin", "administrativo"]
 
-    # Renderizar modais
-    render_modal_detalhes_os(conn)
-    if pode_editar:
-        render_modal_editar_os(conn)
-    if pode_deletar:
-        render_modal_delete_os(conn)
-
     # Filtros
     with st.expander("Filtros de Pesquisa", expanded=True):
-        # Filtro por número da OS
         f_numero_os = st.text_input(
             "Número da OS",
             placeholder="Digite o número da OS para buscar diretamente",
             help="Filtrar por número específico da Ordem de Serviço"
         )
-        
+
         col1, col2 = st.columns(2)
 
         with col1:
@@ -489,66 +428,77 @@ def render():
         with col_data2:
             f_data_fim = st.date_input("Data Final")
 
-        filtrar = st.button(
-            "Aplicar Filtros", use_container_width=True, type="primary"
-        )
+        filtrar = st.button("Aplicar Filtros", use_container_width=True, type="primary")
+
+    # ============================================================================
+    # CORREÇÃO CRÍTICA: Detectar mudanças nos filtros e limpar modais
+    # ============================================================================
+
+    # Criar snapshot dos filtros atuais
+    filtros_atuais = {
+        "numero_os": f_numero_os,
+        "tipo": f_tipo,
+        "status": tuple(f_status) if f_status else (),
+        "secretaria": tuple(f_secretaria) if f_secretaria else (),
+        "tecnico": tuple(f_tecnico) if f_tecnico else (),
+        "categoria": tuple(f_categoria) if f_categoria else (),
+        "equipamento": tuple(f_equipamento) if f_equipamento else (),
+        "data_inicio": str(f_data_inicio) if f_data_inicio else "",
+        "data_fim": str(f_data_fim) if f_data_fim else "",
+    }
+
+    # Comparar com filtros anteriores salvos
+    filtros_anteriores = st.session_state.get("filtros_anteriores", {})
+
+    # Se os filtros mudaram (mesmo sem clicar no botão), limpar modais
+    if filtros_atuais != filtros_anteriores:
+        limpar_estados_modais()
+        st.session_state.filtros_anteriores = filtros_atuais
 
     # Executar filtro
     if filtrar or "df_filtrado" in st.session_state:
         if filtrar:
+            # Limpar estados dos modais ao aplicar novos filtros
+            limpar_estados_modais()
+
             where_clauses = []
             params = {}
 
-            # Filtro por número da OS
             if f_numero_os and f_numero_os.strip():
                 where_clauses.append("numero = :numero_os")
                 params["numero_os"] = f_numero_os.strip()
 
-            # Lógica de construção de WHERE clauses
             if f_status:
-                placeholders = ",".join(
-                    [f":st{i}" for i in range(len(f_status))]
-                )
+                placeholders = ",".join([f":st{i}" for i in range(len(f_status))])
                 where_clauses.append(f"status IN ({placeholders})")
                 for i, st_val in enumerate(f_status):
                     params[f"st{i}"] = st_val
 
             if f_secretaria:
-                placeholders = ",".join(
-                    [f":sec{i}" for i in range(len(f_secretaria))]
-                )
+                placeholders = ",".join([f":sec{i}" for i in range(len(f_secretaria))])
                 where_clauses.append(f"secretaria IN ({placeholders})")
                 for i, sec in enumerate(f_secretaria):
                     params[f"sec{i}"] = sec
 
             if f_tecnico:
-                placeholders = ",".join(
-                    [f":tec{i}" for i in range(len(f_tecnico))]
-                )
+                placeholders = ",".join([f":tec{i}" for i in range(len(f_tecnico))])
                 where_clauses.append(f"tecnico IN ({placeholders})")
                 for i, tec in enumerate(f_tecnico):
                     params[f"tec{i}"] = tec
 
             if f_categoria:
-                placeholders = ",".join(
-                    [f":cat{i}" for i in range(len(f_categoria))]
-                )
+                placeholders = ",".join([f":cat{i}" for i in range(len(f_categoria))])
                 where_clauses.append(f"categoria IN ({placeholders})")
                 for i, cat in enumerate(f_categoria):
                     params[f"cat{i}"] = cat
 
             if f_equipamento:
-                placeholders = ",".join(
-                    [f":eq{i}" for i in range(len(f_equipamento))]
-                )
+                placeholders = ",".join([f":eq{i}" for i in range(len(f_equipamento))])
                 where_clauses.append(f"equipamento IN ({placeholders})")
                 for i, eq in enumerate(f_equipamento):
                     params[f"eq{i}"] = eq
 
-            # --- LÓGICA DE FILTRO DE DATA ---
-            # Só aplica filtros de data se NÃO houver busca por número de OS
-            # Isso evita que o filtro de data (que vem preenchido por padrão)
-            # esconda a OS que o técnico está procurando.
+            # Filtros de data (só aplicar se não houver busca por número)
             if not (f_numero_os and f_numero_os.strip()):
                 if f_data_inicio:
                     where_clauses.append("data >= :data_inicio")
@@ -557,26 +507,21 @@ def render():
                 if f_data_fim:
                     where_clauses.append("data <= :data_fim")
                     params["data_fim"] = f_data_fim
-            # --- FIM DA LÓGICA DE FILTRO DE DATA ---
 
             where_str = ""
             if where_clauses:
-                # O WHERE é adicionado aqui para ser inserido nas sub-queries
                 where_str = " WHERE " + " AND ".join(where_clauses)
 
-            # Lógica de seleção do tipo de OS para Union All
             query_interna_base = "SELECT *, 'Interna' as tipo FROM os_interna"
             query_externa_base = "SELECT *, 'Externa' as tipo FROM os_externa"
             queries_to_union = []
 
-            # 1. Aplica o filtro de tipo selecionando as queries a serem unidas
             if f_tipo == "Interna" or f_tipo == "Todos":
                 queries_to_union.append(f"({query_interna_base}{where_str})")
 
             if f_tipo == "Externa" or f_tipo == "Todos":
                 queries_to_union.append(f"({query_externa_base}{where_str})")
 
-            # 2. Constrói a query final
             if not queries_to_union:
                 st.warning("Nenhuma OS encontrada para o tipo selecionado.")
                 st.session_state.df_filtrado = pd.DataFrame()
@@ -646,26 +591,10 @@ def render():
         # Cabeçalho da tabela
         if pode_editar:
             cols_header = st.columns((1, 1, 1.5, 1.5, 1, 1.5, 2))
-            headers = [
-                "Número",
-                "Tipo",
-                "Secretaria",
-                "Solicitante",
-                "Status",
-                "Data",
-                "Ações",
-            ]
+            headers = ["Número", "Tipo", "Secretaria", "Solicitante", "Status", "Data", "Ações"]
         else:
             cols_header = st.columns((1, 1, 1.5, 1.5, 1, 1.5, 1))
-            headers = [
-                "Número",
-                "Tipo",
-                "Secretaria",
-                "Solicitante",
-                "Status",
-                "Data",
-                "Ações",
-            ]
+            headers = ["Número", "Tipo", "Secretaria", "Solicitante", "Status", "Data", "Ações"]
 
         for col, header in zip(cols_header, headers):
             col.markdown(f"**{header}**")
@@ -684,7 +613,6 @@ def render():
             cols[2].write(str(row["secretaria"]))
             cols[3].write(str(row["solicitante"]))
 
-            # Status com cores
             status_val = str(row["status"])
             if status_val == "EM ABERTO":
                 cols[4].markdown(f"🔴 {status_val}")
@@ -695,11 +623,8 @@ def render():
             else:
                 cols[4].write(status_val)
 
-            # Data
             try:
-                data_formatada = pd.to_datetime(row["data"]).strftime(
-                    "%d/%m/%Y"
-                )
+                data_formatada = pd.to_datetime(row["data"]).strftime("%d/%m/%Y")
                 cols[5].write(data_formatada)
             except Exception:
                 cols[5].write(str(row["data"]))
@@ -708,32 +633,24 @@ def render():
             if pode_editar:
                 col_a, col_b, col_c = cols[6].columns(3)
 
-                # Visualizar
-                if col_a.button(
-                    "👁️", key=f"view_{idx}", help="Visualizar detalhes"
-                ):
+                if col_a.button("👁️", key=f"view_{idx}", help="Visualizar detalhes"):
+                    limpar_estados_modais()
                     st.session_state.view_os_id = idx
                     st.rerun()
 
-                # Editar
-                if col_b.button(
-                    "✏️", key=f"edit_{idx}", help="Editar OS"
-                ):
+                if col_b.button("✏️", key=f"edit_{idx}", help="Editar OS"):
+                    limpar_estados_modais()
                     st.session_state.edit_os_data = row.to_dict()
                     st.rerun()
 
-                # Deletar
                 if pode_deletar:
-                    if col_c.button(
-                        "🗑️", key=f"del_{idx}", help="Deletar OS"
-                    ):
+                    if col_c.button("🗑️", key=f"del_{idx}", help="Deletar OS"):
+                        limpar_estados_modais()
                         st.session_state.delete_os_data = row.to_dict()
                         st.rerun()
             else:
-                # Apenas visualizar
-                if cols[6].button(
-                    "👁️", key=f"view_{idx}", help="Visualizar detalhes"
-                ):
+                if cols[6].button("👁️", key=f"view_{idx}", help="Visualizar detalhes"):
+                    limpar_estados_modais()
                     st.session_state.view_os_id = idx
                     st.rerun()
 
@@ -742,41 +659,48 @@ def render():
         col1, col2, col3, col4, col5 = st.columns([1, 1, 2, 1, 1])
 
         with col1:
-            if st.button(
-                "⏮️ Primeira",
-                disabled=(st.session_state.filtro_page == 1),
-            ):
+            if st.button("⏮️ Primeira", disabled=(st.session_state.filtro_page == 1)):
                 st.session_state.filtro_page = 1
                 st.rerun()
 
         with col2:
-            if st.button(
-                "◀️ Anterior",
-                disabled=(st.session_state.filtro_page == 1),
-            ):
+            if st.button("◀️ Anterior", disabled=(st.session_state.filtro_page == 1)):
                 st.session_state.filtro_page -= 1
                 st.rerun()
 
         with col3:
             st.markdown(
                 f"<div style='text-align: center;'>"
-                f"Página {st.session_state.filtro_page} "
-                f"de {total_pages}</div>",
+                f"Página {st.session_state.filtro_page} de {total_pages}</div>",
                 unsafe_allow_html=True,
             )
 
         with col4:
-            if st.button(
-                "▶️ Próxima",
-                disabled=(st.session_state.filtro_page >= total_pages),
-            ):
+            if st.button("▶️ Próxima", disabled=(st.session_state.filtro_page >= total_pages)):
                 st.session_state.filtro_page += 1
                 st.rerun()
 
         with col5:
-            if st.button(
-                "⏭️ Última",
-                disabled=(st.session_state.filtro_page >= total_pages),
-            ):
+            if st.button("⏭️ Última", disabled=(st.session_state.filtro_page >= total_pages)):
                 st.session_state.filtro_page = total_pages
                 st.rerun()
+
+    # ============================================================================
+    # RENDERIZAÇÃO DOS MODAIS - NO FINAL PARA EVITAR CONFLITOS
+    # ============================================================================
+
+    # Renderizar apenas UM modal por vez com verificação exclusiva
+    if "view_os_id" in st.session_state and st.session_state.view_os_id is not None:
+        try:
+            os_data = st.session_state.df_filtrado.iloc[st.session_state.view_os_id]
+            modal_detalhes(os_data, conn)
+        except (IndexError, KeyError):
+            st.error("Erro ao carregar dados da OS. Aplicando filtros novamente.")
+            limpar_estados_modais()
+            st.rerun()
+
+    elif "edit_os_data" in st.session_state and st.session_state.edit_os_data is not None:
+        modal_editar(st.session_state.edit_os_data, conn)
+
+    elif "delete_os_data" in st.session_state and st.session_state.delete_os_data is not None:
+        modal_excluir(st.session_state.delete_os_data, conn)

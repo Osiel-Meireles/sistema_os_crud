@@ -1,4 +1,4 @@
-# CÓDIGO COMPLETO E ATUALIZADO PARA: sistema_os_crud-main/app.py
+# CÓDIGO COMPLETO E CORRIGIDO: app.py
 
 import streamlit as st
 from sqlalchemy import create_engine, text
@@ -77,13 +77,15 @@ def show_login_page():
 def show_main_app():
     st.set_page_config(page_title="Sistema de Registro de OS - PMLEM", page_icon="🏢", layout="wide")
     
+    # Captura o estado atual
+    role = st.session_state.get("role", "")
+    username = st.session_state.get("username", "")
+
     with st.sidebar:
         st.header("Sistema de Registro de OS - PMLEM")
-        st.markdown(f"**Usuário:** {st.session_state.get('display_name', st.session_state.get('username', 'N/A'))}")
-        st.markdown(f"**Perfil:** {st.session_state.get('role', 'N/A').replace('_', ' ').title()}")
+        st.markdown(f"**Usuário:** {st.session_state.get('display_name', username)}")
+        st.markdown(f"**Perfil:** {role.replace('_', ' ').title()}")
         st.markdown("---")
-        
-        role = st.session_state.get("role", "")
         
         if 'current_page' not in st.session_state:
             if role == "tecnico_recarga":
@@ -95,24 +97,35 @@ def show_main_app():
         
         # TECNICO MENU
         if role == "tecnico":
-            if st.button("Minhas Tarefas", use_container_width=True):
+            if st.button("Minhas Tarefas", key="btn_tarefas", use_container_width=True):
                 st.session_state.current_page = "Minhas Tarefas"
+                st.rerun()
+            
+            # EXCEÇÃO: Comparação exata com 'Diel Batista' (e fallback para 'diel.batista')
+            if username in ["Diel Batista", "diel.batista"]:
+                if st.button("Registrar OS", key="btn_reg_diel", use_container_width=True):
+                    st.session_state.current_page = "Registrar OS"
+                    st.rerun()
             
             st.markdown("---")
             
             if st.button("Laudos Técnicos", use_container_width=True):
                 st.session_state.current_page = "Laudos"
+                st.rerun()
             
             if st.button("Filtrar OS", use_container_width=True):
                 st.session_state.current_page = "Filtrar OS"
+                st.rerun()
             
             if st.button("Dar Baixa", use_container_width=True):
                 st.session_state.current_page = "Dar Baixa"
+                st.rerun()
             
             st.markdown("---")
             
             if st.button("Minha Conta", use_container_width=True):
                 st.session_state.current_page = "Minha Conta"
+                st.rerun()
             
             st.markdown("---")
             
@@ -125,41 +138,51 @@ def show_main_app():
         elif role == "admin":
             if st.button("Dashboard", use_container_width=True):
                 st.session_state.current_page = "Dashboard"
+                st.rerun()
             
             st.markdown("---")
             
             if st.button("Registrar OS", use_container_width=True):
                 st.session_state.current_page = "Registrar OS"
+                st.rerun()
             
             if st.button("Filtrar OS", use_container_width=True):
                 st.session_state.current_page = "Filtrar OS"
+                st.rerun()
             
             if st.button("Dar Baixa", use_container_width=True):
                 st.session_state.current_page = "Dar Baixa"
+                st.rerun()
             
             st.markdown("---")
             
             if st.button("Equipamentos", use_container_width=True):
                 st.session_state.current_page = "Equipamentos"
+                st.rerun()
             
             if st.button("Minhas Recargas", use_container_width=True):
                 st.session_state.current_page = "Minhas Recargas"
+                st.rerun()
             
             if st.button("Laudos", use_container_width=True):
                 st.session_state.current_page = "Laudos"
+                st.rerun()
             
             if st.button("Importar Dados", use_container_width=True):
                 st.session_state.current_page = "Importar Dados"
+                st.rerun()
             
             st.markdown("---")
             
             if st.button("Gerenciar Usuários", use_container_width=True):
                 st.session_state.current_page = "Gerenciar Usuários"
+                st.rerun()
             
             st.markdown("---")
             
             if st.button("Minha Conta", use_container_width=True):
                 st.session_state.current_page = "Minha Conta"
+                st.rerun()
             
             st.markdown("---")
             
@@ -172,11 +195,13 @@ def show_main_app():
         elif role == "tecnico_recarga":
             if st.button("Minhas Recargas", use_container_width=True):
                 st.session_state.current_page = "Minhas Recargas"
+                st.rerun()
             
             st.markdown("---")
             
             if st.button("Minha Conta", use_container_width=True):
                 st.session_state.current_page = "Minha Conta"
+                st.rerun()
             
             st.markdown("---")
             
@@ -189,27 +214,33 @@ def show_main_app():
         elif role == "administrativo":
             if st.button("Dashboard", use_container_width=True):
                 st.session_state.current_page = "Dashboard"
+                st.rerun()
             
             st.markdown("---")
             
             if st.button("Registrar OS", use_container_width=True):
                 st.session_state.current_page = "Registrar OS"
+                st.rerun()
             
             if st.button("Filtrar OS", use_container_width=True):
                 st.session_state.current_page = "Filtrar OS"
+                st.rerun()
             
             if st.button("Dar Baixa", use_container_width=True):
                 st.session_state.current_page = "Dar Baixa"
+                st.rerun()
             
             st.markdown("---")
             
             if st.button("Minhas Recargas", use_container_width=True):
                 st.session_state.current_page = "Minhas Recargas"
+                st.rerun()
             
             st.markdown("---")
             
             if st.button("Minha Conta", use_container_width=True):
                 st.session_state.current_page = "Minha Conta"
+                st.rerun()
             
             st.markdown("---")
             
@@ -222,11 +253,13 @@ def show_main_app():
         else:
             if st.button("Dashboard", use_container_width=True):
                 st.session_state.current_page = "Dashboard"
+                st.rerun()
             
             st.markdown("---")
             
             if st.button("Minha Conta", use_container_width=True):
                 st.session_state.current_page = "Minha Conta"
+                st.rerun()
             
             st.markdown("---")
             
@@ -237,12 +270,12 @@ def show_main_app():
     
     # Verificação de acesso às páginas
     page = st.session_state.current_page
-    role = st.session_state.get("role", "")
     
     # Regras de acesso por página
     access_rules = {
         "Dashboard": ["admin", "administrativo"],
-        "Registrar OS": ["admin", "administrativo"],
+        # Liberação para 'Diel Batista' ou 'diel.batista'
+        "Registrar OS": ["admin", "administrativo", "tecnico"] if username in ["Diel Batista", "diel.batista"] else ["admin", "administrativo"],
         "Minhas Tarefas": ["tecnico"],
         "Minhas Recargas": ["tecnico_recarga", "admin", "administrativo"],
         "Filtrar OS": ["tecnico", "admin", "administrativo"],

@@ -1,3 +1,5 @@
+# CÓDIGO ATUALIZADO E COMPLETO PARA: sistema_os_crud-main/minhas_tarefas.py
+
 import streamlit as st
 import pandas as pd
 from sqlalchemy import text
@@ -10,8 +12,6 @@ import math
 def buscar_tarefas_tecnico(conn, display_name):
     """Busca todas as OSs atribuídas ao técnico logado (Apenas Pendentes)."""
     try:
-        # Query atualizada: Exclui 'AGUARDANDO RETIRADA', 'FINALIZADO' e 'ENTREGUE AO CLIENTE'
-        # Assim, mostra apenas o que requer ação real do técnico (EM ABERTO, AGUARDANDO PEÇAS)
         query = text("""
             SELECT *, 'Interna' as tipo FROM os_interna 
             WHERE tecnico = :tecnico 
@@ -74,7 +74,6 @@ def contar_os_aguardando_pecas(conn, display_name):
 def buscar_os_pendentes_laudo(conn, display_name):
     """Busca OSs com status AGUARDANDO PEÇA(S) que ainda não têm laudo."""
     try:
-        # Primeiro buscar todas as OSs AGUARDANDO PEÇA(S) do técnico
         query_os = text("""
             SELECT id, numero, 'Interna' as tipo, secretaria, equipamento, status, data
             FROM os_interna 
@@ -92,12 +91,9 @@ def buscar_os_pendentes_laudo(conn, display_name):
             columns = result.keys()
             df_os = pd.DataFrame(rows, columns=columns)
             
-            # Para cada OS, verificar se já tem laudo
             os_sem_laudo = []
             for _, row in df_os.iterrows():
-                tipo_os_laudo = f"OS {row['tipo']}" # Mantido conforme lógica original do laudo
-                # Correção preventiva: Verificar se a lógica de laudos usa "OS Interna" ou "Interna"
-                # Assumindo que usa "OS Interna" baseado no código original de laudos.py
+                tipo_os_laudo = f"OS {row['tipo']}"
                 
                 query_laudo = text("""
                     SELECT COUNT(*) as total FROM laudos 
@@ -107,10 +103,10 @@ def buscar_os_pendentes_laudo(conn, display_name):
                 result_laudo = con.execute(query_laudo, {
                     "numero": row['numero'],
                     "tipo": tipo_os_laudo,
-                    "tipo_simples": row['tipo'] # Fallback para compatibilidade
+                    "tipo_simples": row['tipo']
                 }).fetchone()
                 
-                if result_laudo[0] == 0:  # Não tem laudo
+                if result_laudo[0] == 0:
                     os_sem_laudo.append(row)
             
             return pd.DataFrame(os_sem_laudo) if os_sem_laudo else pd.DataFrame()
@@ -121,7 +117,6 @@ def buscar_os_pendentes_laudo(conn, display_name):
 def buscar_os_recentes_finalizadas(conn, display_name, limite=5):
     """Busca as últimas OSs finalizadas do técnico (Inclui Aguardando Retirada)."""
     try:
-        # Query atualizada: Inclui 'FINALIZADO', 'AGUARDANDO RETIRADA' e 'ENTREGUE AO CLIENTE'
         query = text("""
             SELECT *, 'Interna' as tipo FROM os_interna 
             WHERE tecnico = :tecnico 
@@ -147,11 +142,9 @@ def buscar_os_recentes_finalizadas(conn, display_name, limite=5):
 def display_expandable_card(row, idx, display_name):
     """Exibe um card expansível com informações da OS."""
     
-    # Criar identificador único baseado no índice e ID da OS
     os_id = row.get('id', idx)
     card_key = f"card_{idx}_{os_id}"
     
-    # Título do card com status colorido
     status = row.get('status', 'N/A')
     if status == "EM ABERTO":
         status_emoji = "🔴"
@@ -165,7 +158,6 @@ def display_expandable_card(row, idx, display_name):
     titulo = f"OS #{row.get('numero', 'N/A')} - {row.get('secretaria', 'N/A')} - {status_emoji} {status}"
     
     with st.expander(titulo, expanded=False):
-        # Informações básicas em colunas
         col1, col2, col3 = st.columns(3)
         
         with col1:
@@ -179,8 +171,9 @@ def display_expandable_card(row, idx, display_name):
             st.markdown(f"**Categoria:** {row.get('categoria', 'N/A')}")
         
         with col3:
-            st.markdown(f"**Status:** {status}")
             st.markdown(f"**Equipamento:** {row.get('equipamento', 'N/A')}")
+            # ADIÇÃO: Exibição da Marca/Modelo (armazenado em 'descricao')
+            st.markdown(f"**Marca/Modelo:** {row.get('descricao', 'N/A')}")
             try:
                 data_formatada = pd.to_datetime(row.get('data')).strftime('%d/%m/%Y')
                 st.markdown(f"**Data:** {data_formatada}")
@@ -189,7 +182,6 @@ def display_expandable_card(row, idx, display_name):
         
         st.markdown("---")
         
-        # Solicitação do Cliente
         st.markdown("**Solicitação do Cliente:**")
         st.text_area(
             "Solicitação",
@@ -200,9 +192,8 @@ def display_expandable_card(row, idx, display_name):
             key=f"solicitacao_{card_key}"
         )
         
-        # Serviço Executado / Descrição
         st.markdown("**Serviço Executado / Descrição:**")
-        texto_servico = f"{row.get('servico_executado', '') or ''}\n{row.get('descricao', '') or ''}".strip()
+        texto_servico = f"{row.get('servico_executado', '') or ''}\n{row.get('servico_executado_extra', '') or ''}".strip()
         st.text_area(
             "Serviço",
             value=texto_servico,
@@ -214,7 +205,6 @@ def display_expandable_card(row, idx, display_name):
         
         st.markdown("---")
         
-        # Botões de ação
         col1, col2 = st.columns(2)
         
         with col1:
@@ -224,7 +214,6 @@ def display_expandable_card(row, idx, display_name):
                 key=f"btn_atualizar_{card_key}",
                 type="primary"
             ):
-                # Armazenar dados da OS para busca automática em Dar Baixa
                 st.session_state.baixa_os_numero = row.get('numero')
                 st.session_state.baixa_os_tipo = row.get('tipo')
                 st.session_state.baixa_os_id = row.get('id')
@@ -237,7 +226,6 @@ def display_expandable_card(row, idx, display_name):
                 use_container_width=True,
                 key=f"btn_laudo_{card_key}"
             ):
-                # Preparar dados para página de laudos
                 st.session_state.laudo_os_id = row.get('id')
                 st.session_state.laudo_os_numero = row.get('numero')
                 st.session_state.laudo_os_tipo = row.get('tipo')
@@ -246,7 +234,6 @@ def display_expandable_card(row, idx, display_name):
                 st.rerun()
 
 def render_pagination_controls(page_var_name, total_pages):
-    """Renderiza controles de paginação reutilizáveis."""
     current_page = st.session_state.get(page_var_name, 1)
     
     col1, col2, col3, col4, col5 = st.columns([1, 1, 2, 1, 1])
@@ -276,84 +263,68 @@ def render_pagination_controls(page_var_name, total_pages):
             st.rerun()
 
 def render():
-    """Função principal de renderização da página Minhas Tarefas."""
     st.markdown("## Minhas Tarefas")
     
     conn = get_connection()
     display_name = st.session_state.get("display_name", st.session_state.get("username", ""))
     
-    # Buscar estatísticas
     total_abertas = contar_os_abertas(conn, display_name)
     total_aguardando_pecas = contar_os_aguardando_pecas(conn, display_name)
     
-    # Dashboard de estatísticas
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.metric("OSs em Aberto", total_abertas, help="Ordens de Serviço aguardando atendimento")
+        st.metric("OSs em Aberto", total_abertas)
     
     with col2:
-        st.metric("Aguardando Peças", total_aguardando_pecas, help="Ordens aguardando chegada de peças")
+        st.metric("Aguardando Peças", total_aguardando_pecas)
     
     with col3:
         total_ativas = total_abertas + total_aguardando_pecas
-        st.metric("Total Ativo", total_ativas, help="Total de OSs que requerem ação")
+        st.metric("Total Ativo", total_ativas)
     
     st.markdown("---")
     
-    # Definir itens por página
     ITEMS_PER_PAGE = 5
     
-    # Criar abas
     tab1, tab2, tab3 = st.tabs([
         "📋 OSs em Aberto",
         "📝 Pendentes de Laudo",
         "✅ Últimas Finalizadas"
     ])
     
-    # ABA 1: OSs em Aberto (COM PAGINAÇÃO)
     with tab1:
         st.markdown("### Ordens de Serviço em Aberto")
         
-        # Buscar OSs abertas e aguardando peças
         df_abertas = buscar_tarefas_tecnico(conn, display_name)
         
         if df_abertas.empty:
             st.success("🎉 Parabéns! Você não tem ordens de serviço em aberto no momento.")
-            st.info("Todas as suas tarefas foram concluídas ou estão aguardando retirada.")
         else:
-            # Inicializar página se não existir
             if 'tarefas_page' not in st.session_state:
                 st.session_state.tarefas_page = 1
             
-            # Calcular paginação
             total_items = len(df_abertas)
             total_pages = math.ceil(total_items / ITEMS_PER_PAGE)
             
-            # Validar página atual
             if st.session_state.tarefas_page > total_pages:
                 st.session_state.tarefas_page = total_pages
             if st.session_state.tarefas_page < 1:
                 st.session_state.tarefas_page = 1
             
-            # Calcular índices
             start_idx = (st.session_state.tarefas_page - 1) * ITEMS_PER_PAGE
             end_idx = start_idx + ITEMS_PER_PAGE
             df_page = df_abertas.iloc[start_idx:end_idx]
             
-            # Mostrar informação de paginação
             st.info(f"Exibindo **{len(df_page)}** de **{total_items}** ordem(ns) (Página {st.session_state.tarefas_page}/{total_pages})")
             
-            # Exibir cards da página atual
             for idx_real, (idx, row) in enumerate(df_page.iterrows()):
                 display_expandable_card(row, idx, display_name)
             
-            # Controles de paginação
             if total_pages > 1:
                 st.markdown("---")
                 render_pagination_controls('tarefas_page', total_pages)
     
-    # ABA 2: Pendentes de Laudo (COM PAGINAÇÃO)
     with tab2:
         st.markdown("### OSs Aguardando Laudo de Avaliação")
         
@@ -362,29 +333,23 @@ def render():
         if df_pendentes.empty:
             st.success("✅ Não há ordens de serviço pendentes de laudo.")
         else:
-            # Inicializar página se não existir
             if 'pendentes_page' not in st.session_state:
                 st.session_state.pendentes_page = 1
             
-            # Calcular paginação
             total_items = len(df_pendentes)
             total_pages = math.ceil(total_items / ITEMS_PER_PAGE)
             
-            # Validar página atual
             if st.session_state.pendentes_page > total_pages:
                 st.session_state.pendentes_page = total_pages
             if st.session_state.pendentes_page < 1:
                 st.session_state.pendentes_page = 1
             
-            # Calcular índices
             start_idx = (st.session_state.pendentes_page - 1) * ITEMS_PER_PAGE
             end_idx = start_idx + ITEMS_PER_PAGE
             df_page = df_pendentes.iloc[start_idx:end_idx]
             
-            # Mostrar informação
             st.warning(f"**{total_items}** OS(s) aguardando laudo (Página {st.session_state.pendentes_page}/{total_pages})")
             
-            # Exibir em formato de tabela simplificado
             for idx, row in df_page.iterrows():
                 card_id = f"pendente_{idx}_{row.get('id')}"
                 
@@ -408,11 +373,7 @@ def render():
                             st.caption(row.get('data', 'N/A'))
                     
                     with col4:
-                        if st.button(
-                            "📝 Laudo",
-                            key=f"btn_laudo_pendente_{card_id}",
-                            use_container_width=True
-                        ):
+                        if st.button("📝 Laudo", key=f"btn_laudo_pendente_{card_id}", use_container_width=True):
                             st.session_state.laudo_os_id = row.get('id')
                             st.session_state.laudo_os_numero = row.get('numero')
                             st.session_state.laudo_os_tipo = row.get('tipo')
@@ -422,11 +383,9 @@ def render():
                     
                     st.markdown("---")
             
-            # Controles de paginação
             if total_pages > 1:
                 render_pagination_controls('pendentes_page', total_pages)
     
-    # ABA 3: Últimas Finalizadas (SEM PAGINAÇÃO - máximo 5)
     with tab3:
         st.markdown("### Últimas 5 OSs Finalizadas")
         
@@ -437,7 +396,6 @@ def render():
         else:
             st.success(f"**{len(df_finalizadas)}** OS(s) finalizadas recentemente.")
             
-            # Exibir em formato de tabela
             for idx, row in df_finalizadas.iterrows():
                 with st.container():
                     col1, col2, col3, col4 = st.columns([1, 2, 2, 2])

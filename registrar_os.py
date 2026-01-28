@@ -48,14 +48,12 @@ def render():
                 solicitacao_cliente = st.text_area("Solicitação do Cliente *")
                 patrimonio = st.text_input("Número do Patrimônio")
                 
-                # --- ALTERAÇÃO AQUI: Lógica de auto-seleção case-insensitive ---
                 tecnico_disabled = False
                 tecnico_valor_padrao = None
                 if user_role == 'tecnico':
-                    # Encontra o nome correspondente na lista, ignorando o case
                     for t in tecnicos_sorted:
                         if t.upper() == display_name.upper():
-                            tecnico_valor_padrao = t # Ex: "ANTONY CAUÃ"
+                            tecnico_valor_padrao = t
                             tecnico_disabled = True
                             break
                 
@@ -69,7 +67,6 @@ def render():
                     placeholder="Selecione o técnico...",
                     disabled=tecnico_disabled
                 )
-                # --- FIM DA ALTERAÇÃO ---
                 
                 data = st.date_input("Data de Entrada", value=date.today(), format="DD/MM/YYYY")
 
@@ -84,14 +81,15 @@ def render():
                     "Equipamento *", equipamentos_sorted,
                     index=None, placeholder="Selecione o equipamento..."
                 )
+                # ADIÇÃO: Campo Marca/Modelo
+                marca_modelo = st.text_input("Marca / Modelo", placeholder="Ex: Dell Optiplex, HP LaserJet...")
+                
                 hora = st.time_input("Hora de Entrada", value=datetime.now(fuso_horario_sp).time())
             
             submitted_interna = st.form_submit_button("Registrar OS Interna", use_container_width=True, type='primary')
             
             if submitted_interna:
-                # --- ALTERAÇÃO AQUI: Garante o valor correto do técnico ---
                 tecnico_final = tecnico_valor_padrao if tecnico_disabled else tecnico
-                # --- FIM DA ALTERAÇÃO ---
 
                 if not all([setor, solicitante, telefone, solicitacao_cliente]):
                     st.error("Por favor, preencha todos os campos marcados com * (Setor, Solicitante, Telefone, Solicitação).")
@@ -108,12 +106,12 @@ def render():
                                         INSERT INTO os_interna (
                                             numero, secretaria, setor, data, hora, solicitante, telefone, 
                                             solicitacao_cliente, categoria, patrimonio, equipamento, 
-                                            status, tecnico, registrado_por
+                                            descricao, status, tecnico, registrado_por
                                         )
                                         VALUES (
                                             :numero, :secretaria, :setor, :data, :hora, :solicitante, :telefone, 
                                             :solicitacao_cliente, :categoria, :patrimonio, :equipamento, 
-                                            'EM ABERTO', :tecnico, :registrado_por
+                                            :descricao, 'EM ABERTO', :tecnico, :registrado_por
                                         )
                                     """),
                                     {
@@ -121,15 +119,14 @@ def render():
                                         "data": data, "hora": hora, "solicitante": solicitante, 
                                         "telefone": telefone, "solicitacao_cliente": solicitacao_cliente,
                                         "categoria": categoria, "patrimonio": patrimonio, 
-                                        "equipamento": equipamento, "tecnico": tecnico_final, # <-- Usa o valor final
-                                        "registrado_por": username 
+                                        "equipamento": equipamento, "descricao": marca_modelo,
+                                        "tecnico": tecnico_final, "registrado_por": username 
                                     }
                                 )
                         st.toast(f"✅ OS Interna nº {numero_os} adicionada com sucesso!")
                     except Exception as e:
                         st.error(f"Ocorreu um erro ao registrar a OS: {e}")
         
-        # ... (Tabela de OS Interna - inalterada) ...
         st.markdown("---")
         st.markdown("##### Últimas OS Internas cadastradas: ")
         if 'os_interna_page' not in st.session_state: st.session_state.os_interna_page = 1
@@ -177,7 +174,6 @@ def render():
                 solicitacao_cliente_ext = st.text_area("Solicitação do Cliente *")
                 patrimonio_ext = st.text_input("Número do Patrimônio")
                 
-                # --- ALTERAÇÃO AQUI: Lógica de auto-seleção case-insensitive ---
                 tecnico_disabled_ext = False
                 tecnico_valor_padrao_ext = None
                 if user_role == 'tecnico':
@@ -197,7 +193,6 @@ def render():
                     placeholder="Selecione o técnico...",
                     disabled=tecnico_disabled_ext
                 )
-                # --- FIM DA ALTERAÇÃO ---
                 
                 data_ext = st.date_input("Data de Entrada", value=date.today(), format="DD/MM/YYYY")
 
@@ -212,14 +207,15 @@ def render():
                     "Equipamento *", equipamentos_sorted,
                     index=None, placeholder="Selecione o equipamento..."
                 )
+                # ADIÇÃO: Campo Marca/Modelo
+                marca_modelo_ext = st.text_input("Marca / Modelo", placeholder="Ex: Dell Optiplex, HP LaserJet...", key="ext_marca")
+                
                 hora_ext = st.time_input("Hora de Entrada", value=datetime.now(fuso_horario_sp).time())
                 
             submitted_externa = st.form_submit_button("Registrar OS Externa", use_container_width=True, type='primary')
 
             if submitted_externa:
-                # --- ALTERAÇÃO AQUI: Garante o valor correto do técnico ---
                 tecnico_final_ext = tecnico_valor_padrao_ext if tecnico_disabled_ext else tecnico_ext
-                # --- FIM DA ALTERAÇÃO ---
 
                 if not all([setor_ext, solicitante_ext, telefone_ext, solicitacao_cliente_ext]):
                     st.error("Por favor, preencha todos os campos marcados com * (Setor, Solicitante, Telefone, Solicitação).")
@@ -236,12 +232,12 @@ def render():
                                         INSERT INTO os_externa (
                                             numero, secretaria, setor, data, hora, solicitante, telefone, 
                                             solicitacao_cliente, categoria, patrimonio, equipamento, 
-                                            status, tecnico, registrado_por
+                                            descricao, status, tecnico, registrado_por
                                         )
                                         VALUES (
                                             :numero, :secretaria, :setor, :data, :hora, :solicitante, :telefone, 
                                             :solicitacao_cliente, :categoria, :patrimonio, :equipamento, 
-                                            'EM ABERTO', :tecnico, :registrado_por
+                                            :descricao, 'EM ABERTO', :tecnico, :registrado_por
                                         )
                                     """),
                                     {
@@ -249,15 +245,14 @@ def render():
                                         "data": data_ext, "hora": hora_ext, "solicitante": solicitante_ext, 
                                         "telefone": telefone_ext, "solicitacao_cliente": solicitacao_cliente_ext,
                                         "categoria": categoria_ext, "patrimonio": patrimonio_ext, 
-                                        "equipamento": equipamento_ext, "tecnico": tecnico_final_ext, # <-- Usa o valor final
-                                        "registrado_por": username 
+                                        "equipamento": equipamento_ext, "descricao": marca_modelo_ext,
+                                        "tecnico": tecnico_final_ext, "registrado_por": username 
                                     }
                                 )
                         st.toast(f"✅ OS Externa nº {numero_os_ext} adicionada com sucesso!")
                     except Exception as e:
                         st.error(f"Ocorreu um erro ao registrar a OS: {e}")
 
-        # ... (Tabela de OS Externa - inalterada) ...
         st.markdown("---")
         st.markdown("##### Últimas OS Externas cadastradas: ")
         if 'os_externa_page' not in st.session_state: st.session_state.os_externa_page = 1
