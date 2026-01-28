@@ -5,7 +5,7 @@ services:
     build: .
     restart: always
     ports:
-      - "8501:8501"
+      - "8503:8501"
     environment:
       - DB_HOST=db
       - DB_NAME=ordens_servico
