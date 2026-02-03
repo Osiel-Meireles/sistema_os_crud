@@ -10,8 +10,7 @@ from config import STATUS_OPTIONS
 def limpar_estado_baixa():
     """Limpa todos os estados relacionados à OS selecionada para baixa."""
     st.session_state.pop("os_baixa_encontrada", None)
-
-    # Opcional, mas recomendado: limpar widgets do formulário para não herdar valores.
+    # Limpar widgets do formulário para não herdar valores
     st.session_state.pop("select_status_baixa_admin", None)
     st.session_state.pop("select_status_baixa_tecnico", None)
     st.session_state.pop("date_finalizacao_baixa", None)
@@ -22,13 +21,11 @@ def limpar_estado_baixa():
 
 def f_buscar_os_para_baixa(conn, tipo_os, numero_os):
     """Busca uma OS específica no banco de dados para dar baixa."""
-
     if not numero_os or not str(numero_os).strip():
         st.error("O campo 'Número da OS' é obrigatório.")
         return None
 
     numero_os = str(numero_os).strip()
-
     table_name = "os_interna" if tipo_os == "Interna" else "os_externa"
 
     query = text(
@@ -46,12 +43,9 @@ def f_buscar_os_para_baixa(conn, tipo_os, numero_os):
 
         if result:
             os_data = dict(result._mapping)
-            # Salvar com chaves auxiliares para exibição
             os_data["numero_os"] = numero_os
             os_data["tipo_os"] = tipo_os
-
             st.session_state.os_baixa_encontrada = os_data
-
             return os_data
 
         st.warning(f"OS {tipo_os} com número {numero_os} não encontrada.")
@@ -66,11 +60,10 @@ def f_buscar_os_para_baixa(conn, tipo_os, numero_os):
 
 def f_dar_baixa(conn, table_name, os_id, dados_baixa, role):
     """Atualiza o status da OS para baixa/finalização."""
-
     try:
         with conn.connect() as con:
             with con.begin():
-                # REGRA DE NEGÓCIO: Se técnico escolheu "FINALIZADO", muda para "AGUARDANDO RETIRADA"
+                # REGRA DE NEGÓCIO: Técnico muda "FINALIZADO" → "AGUARDANDO RETIRADA"
                 if role == "tecnico" and dados_baixa.get("status") == "FINALIZADO":
                     dados_baixa["status"] = "AGUARDANDO RETIRADA"
 
@@ -90,12 +83,10 @@ def f_dar_baixa(conn, table_name, os_id, dados_baixa, role):
                 )
                 con.execute(query, params)
 
-        # Mensagem baseada no perfil
         if role == "tecnico":
             st.success("OS finalizada! Status alterado para 'AGUARDANDO RETIRADA'")
         else:
             st.success("Baixa registrada com sucesso!")
-
         return True
 
     except Exception as e:
@@ -130,7 +121,6 @@ def render():
 
     # Seção de pesquisa/seleção de OS
     st.markdown("### Selecionar Ordem de Serviço para Baixa")
-
     col1, col2 = st.columns(2)
 
     with col1:
@@ -155,9 +145,7 @@ def render():
             key="input_numero_os_baixa",
         )
 
-    # --------------------------------------------------------------------
-    # CORREÇÃO DE SESSÃO: se mudar tipo/número, limpar OS antiga da tela
-    # --------------------------------------------------------------------
+    # ✅ CORREÇÃO: Detectar mudança de filtro e limpar OS anterior
     filtro_atual = {
         "tipo_os": tipo_os,
         "numero_os": (numero_os or "").strip(),
@@ -176,14 +164,14 @@ def render():
     ):
         with st.spinner("Buscando OS automaticamente..."):
             os_auto = f_buscar_os_para_baixa(conn, baixa_os_tipo, baixa_os_numero)
-
-        # Fixar snapshot do filtro (para não limpar no rerun seguinte)
+        
+        # Fixar snapshot do filtro para próxima renderização
         st.session_state["filtro_baixa_anterior"] = {
             "tipo_os": baixa_os_tipo,
             "numero_os": str(baixa_os_numero).strip(),
         }
-
-        # Limpar variáveis para não buscar novamente
+        
+        # Limpar variáveis de redirecionamento
         st.session_state.baixa_os_id = None
         st.session_state.baixa_os_numero = None
         st.session_state.baixa_os_tipo = None
@@ -191,7 +179,6 @@ def render():
     # Botão de busca manual
     if st.button("Buscar OS", use_container_width=True, type="primary"):
         f_buscar_os_para_baixa(conn, tipo_os, numero_os)
-        # Atualiza o snapshot com o que foi buscado
         st.session_state["filtro_baixa_anterior"] = {
             "tipo_os": tipo_os,
             "numero_os": (numero_os or "").strip(),
@@ -200,7 +187,11 @@ def render():
     os_encontrada = st.session_state.get("os_baixa_encontrada")
 
     if os_encontrada:
-        # Validação: Se é técnico, só pode dar baixa em suas próprias OS
+        # ✅ CORREÇÃO: ID ÚNICO para keys dos widgets
+        os_numero_display = os_encontrada.get("numero_os", "N/A")
+        os_id = os_encontrada.get("id")
+
+        # Validação: Técnico só pode dar baixa em suas OS
         display_name = st.session_state.get("display_name", "")
         if role == "tecnico" and os_encontrada.get("tecnico") != display_name:
             st.error("Você só pode dar baixa em suas próprias Ordens de Serviço.")
@@ -209,23 +200,24 @@ def render():
             return
 
         st.markdown("---")
-        st.success("OS Encontrada para Dar Baixa!")
+        st.success("✅ OS Encontrada para Dar Baixa!")
 
-        # Exibir informações da OS
-        c1, c2, c3 = st.columns(3)
-        with c1:
+        # Exibir informações da OS (métricas)
+        col1, col2, col3 = st.columns(3)
+        with col1:
             st.metric("Número", os_encontrada.get("numero_os", "N/A"))
-        with c2:
+        with col2:
             st.metric("Tipo", os_encontrada.get("tipo_os", "N/A"))
-        with c3:
+        with col3:
             st.metric("Status Atual", os_encontrada.get("status", "N/A"))
 
-        c1, c2 = st.columns(2)
-        with c1:
+        # Informações detalhadas
+        col1, col2 = st.columns(2)
+        with col1:
             st.write(f"**Secretaria:** {os_encontrada.get('secretaria', 'N/A')}")
             st.write(f"**Setor:** {os_encontrada.get('setor', 'N/A')}")
             st.write(f"**Técnico:** {os_encontrada.get('tecnico', 'N/A')}")
-        with c2:
+        with col2:
             st.write(f"**Equipamento:** {os_encontrada.get('equipamento', 'N/A')}")
             st.write(f"**Patrimônio:** {os_encontrada.get('patrimonio', 'N/A')}")
             st.write(f"**Solicitante:** {os_encontrada.get('solicitante', 'N/A')}")
@@ -234,13 +226,12 @@ def render():
         data_formatada = "N/A"
         if pd.notna(os_encontrada.get("data")):
             try:
-                data_formatada = pd.to_datetime(os_encontrada.get("data")).strftime(
-                    "%d/%m/%Y"
-                )
-            except Exception:
+                data_formatada = pd.to_datetime(os_encontrada.get("data")).strftime("%d/%m/%Y")
+            except:
                 data_formatada = str(os_encontrada.get("data"))
         st.write(f"**Data da OS:** {data_formatada}")
 
+        # ✅ CORREÇÃO: text_area com KEY DINÂMICA por OS
         if os_encontrada.get("solicitacao_cliente"):
             st.markdown("**Solicitação do Cliente:**")
             st.text_area(
@@ -249,7 +240,7 @@ def render():
                 disabled=True,
                 height=80,
                 label_visibility="collapsed",
-                key="text_solicitacao_baixa",
+                key=f"text_solicitacao_baixa_{os_numero_display}_{os_id}"  # ✅ KEY ÚNICA
             )
 
         if os_encontrada.get("servico_executado"):
@@ -260,7 +251,7 @@ def render():
                 disabled=True,
                 height=80,
                 label_visibility="collapsed",
-                key="text_servico_baixa",
+                key=f"text_servico_baixa_{os_numero_display}_{os_id}"  # ✅ KEY ÚNICA
             )
 
         st.markdown("---")
@@ -270,7 +261,7 @@ def render():
             col1, col2 = st.columns(2)
 
             with col1:
-                # REGRA: Técnicos podem apenas finalizar
+                # REGRA: Técnicos só podem finalizar
                 if role == "tecnico":
                     status_options = ["FINALIZADO"]
                     status_novo = st.selectbox(
@@ -285,10 +276,11 @@ def render():
                     status_novo = st.selectbox(
                         "Novo Status *",
                         STATUS_OPTIONS,
-                        index=
+                        index=(
                             STATUS_OPTIONS.index(os_encontrada.get("status", "EM ABERTO"))
                             if os_encontrada.get("status") in STATUS_OPTIONS
-                            else 0,
+                            else 0
+                        ),
                         key="select_status_baixa_admin",
                     )
 
@@ -303,34 +295,28 @@ def render():
                 "Observações da Finalização / Serviço Executado *",
                 value=os_encontrada.get("servico_executado", "") or "",
                 height=150,
-                placeholder=(
-                    "Descreva o serviço realizado ou observações sobre a finalização da OS..."
-                ),
+                placeholder="Descreva o serviço realizado ou observações sobre a finalização da OS...",
                 key="textarea_obs_baixa",
             )
 
+            # REGRA: Apenas admin/administrativo podem registrar retirada
             retirada_por = None
             data_retirada = None
-
             if role in ["admin", "administrativo"]:
                 st.divider()
                 st.markdown("#### Registro de Retirada (Apenas Admin/Administrativo)")
-
                 retirada_por = st.text_input(
                     "Retirado por (Nome de quem retirou o equipamento)",
                     placeholder="Nome completo da pessoa que retirou",
                     key="input_retirada_por",
                 )
-
                 data_retirada = st.date_input(
                     "Data da Retirada",
                     value=datetime.now().date(),
                     key="date_retirada",
                 )
             else:
-                st.info(
-                    "O registro de retirada será preenchido apenas por administradores."
-                )
+                st.info("O registro de retirada será preenchido apenas por administradores.")
 
             st.markdown("---")
             col_btn1, col_btn2 = st.columns(2)
@@ -340,48 +326,38 @@ def render():
                 use_container_width=True,
                 type="primary",
             )
-
             cancelar = col_btn2.form_submit_button(
                 "Cancelar",
                 use_container_width=True,
             )
 
             if submitted:
+                # Validações
                 if not status_novo or not data_finalizacao or not observacoes_finalizacao:
                     st.error("Preencha todos os campos obrigatórios (marcados com *).")
                 else:
-                    # Determinar tabela baseado no tipo
                     table_name = (
                         "os_interna"
                         if os_encontrada.get("tipo_os") == "Interna"
                         else "os_externa"
                     )
-
                     dados_baixa = {
                         "status": status_novo,
                         "data_finalizada": data_finalizacao if data_finalizacao else None,
                         "servico_executado": observacoes_finalizacao if observacoes_finalizacao else None,
                     }
 
-                    # Adicionar retirada_por apenas se for admin/administrativo
+                    # Adicionar retirada apenas para admin
                     if role in ["admin", "administrativo"] and retirada_por:
                         dados_baixa["retirada_por"] = retirada_por
                         dados_baixa["data_retirada"] = data_retirada
 
-                    # REGRA do seu código original: se FINALIZADO por admin, vira ENTREGUE AO CLIENTE
+                    # REGRA: Admin finalizado → ENTREGUE AO CLIENTE
                     if status_novo == "FINALIZADO" and role in ["admin", "administrativo"]:
                         dados_baixa["status"] = "ENTREGUE AO CLIENTE"
 
-                    if f_dar_baixa(
-                        conn,
-                        table_name,
-                        os_encontrada.get("id"),
-                        dados_baixa,
-                        role,
-                    ):
+                    if f_dar_baixa(conn, table_name, os_id, dados_baixa, role):
                         limpar_estado_baixa()
-
-                        # Se é técnico, voltar para Minhas Tarefas
                         if role == "tecnico":
                             st.info("Redirecionando para Minhas Tarefas...")
                             st.session_state.current_page = "Minhas Tarefas"
@@ -398,7 +374,7 @@ def render():
                     st.rerun()
 
     else:
-        st.info("Busque por uma OS para registrar a baixa.")
+        st.info("🔍 Busque por uma OS para registrar a baixa.")
 
     st.markdown("---")
 
