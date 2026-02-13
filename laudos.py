@@ -6,8 +6,228 @@ from database import get_connection
 from config import TECNICOS, STATUS_LAUDO
 from datetime import datetime
 import pytz
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import cm
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_JUSTIFY
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+import io
+import os
 
 TECNICOS_LAUDO = sorted(TECNICOS)
+
+def gerar_pdf_laudo(laudo_data):
+    """Gera um PDF do laudo técnico seguindo o modelo fornecido."""
+    buffer = io.BytesIO()
+    
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=2.5*cm,
+        leftMargin=2.5*cm,
+        topMargin=2*cm,
+        bottomMargin=2*cm
+    )
+    
+    styles = getSampleStyleSheet()
+    
+    # =========================
+    # ESTILOS AJUSTADOS
+    # =========================
+    
+    style_titulo = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=18,
+        textColor=colors.HexColor('#000000'),
+        spaceAfter=15,
+        spaceBefore=10,
+        alignment=TA_CENTER,
+        fontName='Helvetica-Bold'
+    )
+    
+    style_subtitulo = ParagraphStyle(
+        'CustomSubtitle',
+        parent=styles['Heading2'],
+        fontSize=11,
+        textColor=colors.HexColor('#000000'),
+        spaceAfter=6,
+        spaceBefore=10,
+        fontName='Helvetica-Bold'
+    )
+    
+    style_normal = ParagraphStyle(
+        'CustomNormal',
+        parent=styles['Normal'],
+        fontSize=11,
+        textColor=colors.HexColor('#000000'),
+        alignment=TA_JUSTIFY,
+        fontName='Helvetica',
+        leading=14
+    )
+    
+    style_label = ParagraphStyle(
+        'LabelStyle',
+        parent=styles['Normal'],
+        fontSize=11,
+        textColor=colors.HexColor('#000000'),
+        fontName='Helvetica-Bold',
+        leading=14
+    )
+    
+    style_value = ParagraphStyle(
+        'ValueStyle',
+        parent=styles['Normal'],
+        fontSize=11,
+        textColor=colors.HexColor('#000000'),
+        fontName='Helvetica',
+        leading=14
+    )
+    
+    elementos = []
+    
+    # =========================
+    # LOGO
+    # =========================
+    
+    if os.path.exists('LOGO_TI.png'):
+        logo = Image('LOGO_TI.png', width=7*cm, height=3*cm)
+        logo.hAlign = 'CENTER'
+        elementos.append(logo)
+        elementos.append(Spacer(1, 0.5*cm))
+    
+    # =========================
+    # CABEÇALHO
+    # =========================
+    
+    fuso_sp = pytz.timezone('America/Sao_Paulo')
+    data_registro = laudo_data['data_registro'].astimezone(fuso_sp).strftime('%d/%m/%Y')
+    
+    info_data = [
+        [Paragraph('<b>DATA:</b>', style_label), Paragraph(data_registro, style_value)],
+        [Paragraph('<b>TÉCNICO:</b>', style_label), Paragraph(laudo_data['tecnico'].upper(), style_value)],
+        [Paragraph('<b>ASSUNTO:</b>', style_label), Paragraph(f"OS {laudo_data['tipo_os']} - {laudo_data['numero_os']}", style_value)]
+    ]
+    
+    tabela_cabecalho = Table(info_data, colWidths=[3*cm, 13*cm])
+    tabela_cabecalho.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 0),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+        ('TOPPADDING', (0, 0), (-1, -1), 2),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+    ]))
+    
+    elementos.append(tabela_cabecalho)
+    elementos.append(Spacer(1, 0.7*cm))
+    
+    # =========================
+    # TÍTULO
+    # =========================
+    
+    elementos.append(Paragraph("LAUDO TÉCNICO", style_titulo))
+    elementos.append(Spacer(1, 0.5*cm))
+    
+    # =========================
+    # ATENDIMENTO
+    # =========================
+    
+    elementos.append(Paragraph("ATENDIMENTO", style_subtitulo))
+    
+    texto_atendimento = f"""Foi registrado um laudo técnico referente à Ordem de Serviço {laudo_data['tipo_os']} 
+número {laudo_data['numero_os']}, sob responsabilidade do técnico {laudo_data['tecnico'].upper()}. 
+O equipamento foi avaliado e encontra-se em estado de conservação classificado como 
+<b>{laudo_data.get('estado_conservacao', 'N/A')}</b>. Quanto à completude do equipamento, 
+foi constatado que está <b>{laudo_data.get('equipamento_completo', 'N/A')}</b> completo."""
+    
+    elementos.append(Paragraph(texto_atendimento, style_normal))
+    elementos.append(Spacer(1, 0.5*cm))
+    
+    # =========================
+    # DIAGNÓSTICO
+    # =========================
+    
+    elementos.append(Paragraph("DIAGNÓSTICO", style_subtitulo))
+    diagnostico_texto = laudo_data.get('diagnostico', 'Não informado').replace('\n', '<br/>')
+    elementos.append(Paragraph(diagnostico_texto, style_normal))
+    elementos.append(Spacer(1, 0.5*cm))
+    
+    # =========================
+    # RESOLUÇÃO
+    # =========================
+    
+    elementos.append(Paragraph("RESOLUÇÃO", style_subtitulo))
+    
+    status_atual = laudo_data.get('status', 'PENDENTE')
+    
+    resolucoes_por_status = {
+        'PENDENTE': 'O laudo técnico foi registrado e aguarda análise para definição das próximas ações.',
+        'EM ANÁLISE': 'O laudo está em processo de análise técnica para determinação da melhor solução.',
+        'AGUARDANDO PEÇAS': 'Após análise técnica, foi identificada a necessidade de peças para o reparo do equipamento.',
+        'CONCLUÍDO': 'O laudo técnico foi finalizado e todas as ações necessárias foram concluídas.',
+        'CANCELADO': 'O laudo técnico foi cancelado conforme solicitação ou necessidade identificada.'
+    }
+    
+    texto_resolucao = resolucoes_por_status.get(status_atual, f'Status atual do laudo: {status_atual}.')
+    
+    elementos.append(Paragraph(texto_resolucao, style_normal))
+    
+    if laudo_data.get('observacoes'):
+        elementos.append(Spacer(1, 0.4*cm))
+        obs_texto = f"<b>Observações Adicionais:</b><br/>{laudo_data['observacoes'].replace(chr(10), '<br/>')}"
+        elementos.append(Paragraph(obs_texto, style_normal))
+    
+    # =========================
+    # ASSINATURA
+    # =========================
+    
+    elementos.append(Spacer(1, 5*cm))
+    
+    tabela_assinatura = Table([['_________________________________________']], colWidths=[8*cm])
+    tabela_assinatura.setStyle(TableStyle([
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 0),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+        ('TOPPADDING', (0, 0), (-1, -1), 0),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+    ]))
+    
+    tabela_assinatura.hAlign = 'CENTER'
+    elementos.append(tabela_assinatura)
+    
+    style_assinatura = ParagraphStyle(
+        'AssinaturaStyle',
+        parent=styles['Normal'],
+        fontSize=10,
+        textColor=colors.HexColor('#000000'),
+        fontName='Helvetica',
+        alignment=TA_CENTER
+    )
+    
+    elementos.append(Paragraph("Coordenação do Departamento de Tecnologia", style_assinatura))
+    
+    # =========================
+    # BARRA AZUL FIXA NO RODAPÉ
+    # =========================
+    
+    def desenhar_barra_rodape(canvas, doc):
+        canvas.saveState()
+        largura, altura = A4
+        canvas.setFillColor(colors.HexColor('#0066CC'))
+        canvas.rect(0, 0, largura, 0.5 * cm, stroke=0, fill=1)
+        canvas.restoreState()
+    
+    doc.build(
+        elementos,
+        onFirstPage=desenhar_barra_rodape,
+        onLaterPages=desenhar_barra_rodape
+    )
+    
+    buffer.seek(0)
+    return buffer
 
 def f_buscar_os(conn, tipo_os, numero_os):
     """Busca uma OS específica no banco de dados."""
@@ -163,6 +383,23 @@ def render_modal_detalhes(conn):
             st.markdown(f"**Última Atualização:** {data_at}")
         
         st.divider()
+        
+        # BOTÃO PARA GERAR PDF
+        if st.button("📄 Gerar PDF do Laudo", type="secondary", use_container_width=True):
+            try:
+                pdf_buffer = gerar_pdf_laudo(laudo)
+                st.download_button(
+                    label="⬇️ Baixar PDF",
+                    data=pdf_buffer,
+                    file_name=f"Laudo_OS_{laudo['numero_os']}_{laudo['id']}.pdf",
+                    mime="application/pdf",
+                    use_container_width=True
+                )
+                st.success("PDF gerado com sucesso! Clique no botão acima para baixar.")
+            except Exception as e:
+                st.error(f"Erro ao gerar PDF: {e}")
+        
+        st.divider()
         st.markdown("#### Atualizar Status do Laudo")
         
         try:
@@ -184,7 +421,7 @@ def render_modal_detalhes(conn):
                     st.session_state.view_laudo_id = None
                     st.rerun()
             else:
-                st.toast("O status selecionado é o mesmo status atual.")
+                st.warning("O status selecionado é o mesmo que o atual.")
         
         if col_b2.button("Fechar", use_container_width=True):
             st.session_state.view_laudo_id = None
@@ -193,55 +430,40 @@ def render_modal_detalhes(conn):
     show_modal()
 
 def render():
-    st.title("Laudos Técnicos")
+    """Renderiza a interface de laudos técnicos."""
     conn = get_connection()
     
     render_modal_detalhes(conn)
     
-    # Verificar se veio de Minhas Tarefas com OS pré-selecionada
-    laudo_os_id = st.session_state.get('laudo_os_id')
-    laudo_os_numero = st.session_state.get('laudo_os_numero')
-    laudo_os_tipo = st.session_state.get('laudo_os_tipo', 'Interna')
+    st.title("📋 Laudos Técnicos")
     
-    st.markdown("---")
-    
-    # CRIAR ABAS
-    tab1, tab2 = st.tabs(["Registrar Laudo", "Consulta de Laudos"])
+    tab1, tab2 = st.tabs(["📝 Registrar Laudo", "🔍 Consulta de Laudos"])
     
     # ================= ABA 1: REGISTRAR LAUDO =================
     with tab1:
-        # Seção de pesquisa/seleção de OS
-        st.markdown("### Selecionar Ordem de Serviço")
+        st.markdown("### Registrar Novo Laudo Técnico")
         
-        col1, col2 = st.columns(2)
-        with col1:
-            # Se veio pré-selecionado, usar esse valor como padrão
-            tipo_os_options = ["Interna", "Externa"]
-            tipo_os_index = tipo_os_options.index(laudo_os_tipo) if laudo_os_tipo in tipo_os_options else 0
+        # Verificar se veio de Minhas Tarefas
+        if 'laudo_os_id' in st.session_state and st.session_state.laudo_os_id:
+            numero_os_sessao = st.session_state.get('laudo_os_numero')
+            tipo_os_sessao = st.session_state.get('laudo_os_tipo')
             
-            tipo_os = st.selectbox(
-                "Tipo de OS",
-                tipo_os_options,
-                index=tipo_os_index,
-                key="select_tipo_os_laudo"
-            )
-        
-        with col2:
-            numero_os = st.text_input(
-                "Número da OS",
-                value=laudo_os_numero if laudo_os_numero else "",
-                placeholder="Ex: 1-25",
-                key="input_numero_os_laudo"
-            )
-        
-        # Se veio de Minhas Tarefas, já buscar automaticamente
-        if laudo_os_id and laudo_os_numero and 'os_encontrada' not in st.session_state:
-            f_buscar_os(conn, tipo_os, laudo_os_numero)
-        
-        if st.button("Buscar OS", use_container_width=True):
-            f_buscar_os(conn, tipo_os, numero_os)
-        
-        os_encontrada = st.session_state.get('os_encontrada')
+            if numero_os_sessao and tipo_os_sessao:
+                st.info(f"Registro de laudo para OS: {numero_os_sessao} ({tipo_os_sessao})")
+                os_encontrada = f_buscar_os(conn, tipo_os_sessao, numero_os_sessao)
+            else:
+                os_encontrada = None
+        else:
+            col1, col2 = st.columns(2)
+            with col1:
+                tipo_os = st.selectbox("Tipo de OS *", ["Interna", "Externa"])
+            with col2:
+                numero_os = st.text_input("Número da OS *")
+            
+            if st.button("🔍 Buscar OS", use_container_width=True):
+                os_encontrada = f_buscar_os(conn, tipo_os, numero_os)
+            else:
+                os_encontrada = st.session_state.get('os_encontrada')
         
         if os_encontrada:
             st.markdown("---")
